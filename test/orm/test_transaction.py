@@ -3,7 +3,7 @@ from sqlalchemy import (
     testing, exc as sa_exc, event, String, Column, Table, select, func)
 from sqlalchemy.testing import (
     fixtures, engines, eq_, assert_raises, assert_raises_message,
-    assert_warnings)
+    assert_warnings, mock, expect_warnings)
 from sqlalchemy.orm import (
     exc as orm_exc, Session, mapper, sessionmaker, create_session,
     relationship, attributes)
@@ -183,6 +183,23 @@ class SessionTransactionTest(FixtureTest):
         engine2.dispose()
         assert users.count().scalar() == 1
         assert addresses.count().scalar() == 1
+
+    @testing.requires.independent_connections
+    def test_invalidate(self):
+        User, users = self.classes.User, self.tables.users
+        mapper(User, users)
+        sess = Session()
+        u = User(name='u1')
+        sess.add(u)
+        sess.flush()
+        c1 = sess.connection(User)
+
+        sess.invalidate()
+        assert c1.invalidated
+
+        eq_(sess.query(User).all(), [])
+        c2 = sess.connection(User)
+        assert not c2.invalidated
 
     def test_subtransaction_on_noautocommit(self):
         User, users = self.classes.User, self.tables.users
@@ -480,6 +497,32 @@ class SessionTransactionTest(FixtureTest):
             orm_exc.FlushError, sess.flush
         )
         return sess, u1
+
+    def test_execution_options_begin_transaction(self):
+        bind = mock.Mock()
+        sess = Session(bind=bind)
+        c1 = sess.connection(execution_options={'isolation_level': 'FOO'})
+        eq_(
+            bind.mock_calls,
+            [
+                mock.call.contextual_connect(),
+                mock.call.contextual_connect().
+                execution_options(isolation_level='FOO'),
+                mock.call.contextual_connect().execution_options().begin()
+            ]
+        )
+        eq_(c1, bind.contextual_connect().execution_options())
+
+    def test_execution_options_ignored_mid_transaction(self):
+        bind = mock.Mock()
+        conn = mock.Mock(engine=bind)
+        bind.contextual_connect = mock.Mock(return_value=conn)
+        sess = Session(bind=bind)
+        sess.execute("select 1")
+        with expect_warnings(
+                "Connection is already established for the "
+                "given bind; execution_options ignored"):
+            sess.connection(execution_options={'isolation_level': 'FOO'})
 
     def test_warning_on_using_inactive_session_new(self):
         User = self.classes.User

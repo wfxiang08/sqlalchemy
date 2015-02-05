@@ -38,6 +38,7 @@ class Operators(object):
     :class:`.ColumnOperators`.
 
     """
+    __slots__ = ()
 
     def __and__(self, other):
         """Implement the ``&`` operator.
@@ -137,7 +138,7 @@ class Operators(object):
          .. versionadded:: 0.8 - added the 'precedence' argument.
 
         :param is_comparison: if True, the operator will be considered as a
-         "comparison" operator, that is which evaulates to a boolean
+         "comparison" operator, that is which evaluates to a boolean
          true/false value, like ``==``, ``>``, etc.  This flag should be set
          so that ORM relationships can establish that the operator is a
          comparison operator when used in a custom join condition.
@@ -266,6 +267,8 @@ class ColumnOperators(Operators):
     :class:`.PropComparator`
 
     """
+
+    __slots__ = ()
 
     timetuple = None
     """Hack, allows datetime objects to be compared on the LHS."""

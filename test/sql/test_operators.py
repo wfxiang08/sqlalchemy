@@ -361,7 +361,7 @@ class CustomComparatorTest(_CustomComparatorTests, fixtures.TestBase):
             class comparator_factory(TypeEngine.Comparator):
 
                 def __init__(self, expr):
-                    self.expr = expr
+                    super(MyInteger.comparator_factory, self).__init__(expr)
 
                 def __add__(self, other):
                     return self.expr.op("goofy")(other)
@@ -382,7 +382,7 @@ class TypeDecoratorComparatorTest(_CustomComparatorTests, fixtures.TestBase):
             class comparator_factory(TypeDecorator.Comparator):
 
                 def __init__(self, expr):
-                    self.expr = expr
+                    super(MyInteger.comparator_factory, self).__init__(expr)
 
                 def __add__(self, other):
                     return self.expr.op("goofy")(other)
@@ -391,6 +391,31 @@ class TypeDecoratorComparatorTest(_CustomComparatorTests, fixtures.TestBase):
                     return self.expr.op("goofy_and")(other)
 
         return MyInteger
+
+
+class TypeDecoratorTypeDecoratorComparatorTest(
+        _CustomComparatorTests, fixtures.TestBase):
+
+    def _add_override_factory(self):
+
+        class MyIntegerOne(TypeDecorator):
+            impl = Integer
+
+            class comparator_factory(TypeDecorator.Comparator):
+
+                def __init__(self, expr):
+                    super(MyIntegerOne.comparator_factory, self).__init__(expr)
+
+                def __add__(self, other):
+                    return self.expr.op("goofy")(other)
+
+                def __and__(self, other):
+                    return self.expr.op("goofy_and")(other)
+
+        class MyIntegerTwo(TypeDecorator):
+            impl = MyIntegerOne
+
+        return MyIntegerTwo
 
 
 class TypeDecoratorWVariantComparatorTest(
@@ -404,7 +429,9 @@ class TypeDecoratorWVariantComparatorTest(
             class comparator_factory(TypeEngine.Comparator):
 
                 def __init__(self, expr):
-                    self.expr = expr
+                    super(
+                        SomeOtherInteger.comparator_factory,
+                        self).__init__(expr)
 
                 def __add__(self, other):
                     return self.expr.op("not goofy")(other)
@@ -418,7 +445,7 @@ class TypeDecoratorWVariantComparatorTest(
             class comparator_factory(TypeDecorator.Comparator):
 
                 def __init__(self, expr):
-                    self.expr = expr
+                    super(MyInteger.comparator_factory, self).__init__(expr)
 
                 def __add__(self, other):
                     return self.expr.op("goofy")(other)
@@ -439,7 +466,7 @@ class CustomEmbeddedinTypeDecoratorTest(
             class comparator_factory(TypeEngine.Comparator):
 
                 def __init__(self, expr):
-                    self.expr = expr
+                    super(MyInteger.comparator_factory, self).__init__(expr)
 
                 def __add__(self, other):
                     return self.expr.op("goofy")(other)
@@ -461,7 +488,7 @@ class NewOperatorTest(_CustomComparatorTests, fixtures.TestBase):
             class comparator_factory(TypeEngine.Comparator):
 
                 def __init__(self, expr):
-                    self.expr = expr
+                    super(MyInteger.comparator_factory, self).__init__(expr)
 
                 def foob(self, other):
                     return self.expr.op("foob")(other)

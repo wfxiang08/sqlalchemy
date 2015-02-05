@@ -1,4 +1,5 @@
 
+
 ==============
 1.0 Changelog
 ==============
@@ -21,6 +22,224 @@
     described here are also present in the 0.9 and sometimes the 0.8
     series as well.  For changes that are specific to 1.0 with an emphasis
     on compatibility concerns, see :doc:`/changelog/migration_10`.
+
+    .. change::
+        :tags: feature, mysql
+        :tickets: 3155
+
+        The MySQL dialect now renders TIMESTAMP with NULL / NOT NULL in
+        all cases, so that MySQL 5.6.6 with the
+        ``explicit_defaults_for_timestamp`` flag enabled will
+        will allow TIMESTAMP to continue to work as expected when
+        ``nullable=False``.  Existing applications are unaffected as
+        SQLAlchemy has always emitted NULL for a TIMESTAMP column that
+        is ``nullable=True``.
+
+        .. seealso::
+
+            :ref:`change_3155`
+
+            :ref:`mysql_timestamp_null`
+
+    .. change::
+        :tags: bug, schema
+        :tickets: 3299, 3067
+
+        The :class:`.CheckConstraint` construct now supports naming
+        conventions that include the token ``%(column_0_name)s``; the
+        constraint expression is scanned for columns.  Additionally,
+        naming conventions for check constraints that don't include the
+        ``%(constraint_name)s`` token will now work for :class:`.SchemaType`-
+        generated constraints, such as those of :class:`.Boolean` and
+        :class:`.Enum`; this stopped working in 0.9.7 due to :ticket:`3067`.
+
+        .. seealso::
+
+            :ref:`naming_check_constraints`
+
+            :ref:`naming_schematypes`
+
+
+    .. change::
+        :tags: feature, postgresql, pypy
+        :tickets: 3052
+        :pullreq: bitbucket:34
+
+        Added support for the psycopg2cffi DBAPI on pypy.   Pull request
+        courtesy shauns.
+
+        .. seealso::
+
+            :mod:`sqlalchemy.dialects.postgresql.psycopg2cffi`
+
+    .. change::
+        :tags: feature, orm
+        :tickets: 3262
+        :pullreq: bitbucket:38
+
+        A warning is emitted when the same polymorphic identity is assigned
+        to two different mappers in the same hierarchy.  This is typically a
+        user error and means that the two different mapping types cannot be
+        correctly distinguished at load time.  Pull request courtesy
+        Sebastian Bank.
+
+    .. change::
+        :tags: feature, sql
+        :pullreq: github:150
+
+        The type of expression is reported when an object passed to a
+        SQL expression unit can't be interpreted as a SQL fragment;
+        pull request courtesy Ryan P. Kelly.
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 3227, 3242, 1326
+
+        The primary :class:`.Mapper` of a :class:`.Query` is now passed to the
+        :meth:`.Session.get_bind` method when calling upon
+        :meth:`.Query.count`, :meth:`.Query.update`, :meth:`.Query.delete`,
+        as well as queries against mapped columns,
+        :obj:`.column_property` objects, and SQL functions and expressions
+        derived from mapped columns.   This allows sessions that rely upon
+        either customized :meth:`.Session.get_bind` schemes or "bound" metadata
+        to work in all relevant cases.
+
+        .. seealso::
+
+            :ref:`bug_3227`
+
+    .. change::
+        :tags: enhancement, sql
+        :tickets: 3074
+
+        Custom dialects that implement :class:`.GenericTypeCompiler` can
+        now be constructed such that the visit methods receive an indication
+        of the owning expression object, if any.  Any visit method that
+        accepts keyword arguments (e.g. ``**kw``) will in most cases
+        receive a keyword argument ``type_expression``, referring to the
+        expression object that the type is contained within.  For columns
+        in DDL, the dialect's compiler class may need to alter its
+        ``get_column_specification()`` method to support this as well.
+        The ``UserDefinedType.get_col_spec()`` method will also receive
+        ``type_expression`` if it provides ``**kw`` in its argument
+        signature.
+
+    .. change::
+        :tags: bug, sql
+        :tickets: 3288
+
+        The multi-values version of :meth:`.Insert.values` has been
+        repaired to work more usefully with tables that have Python-
+        side default values and/or functions, as well as server-side
+        defaults. The feature will now work with a dialect that uses
+        "positional" parameters; a Python callable will also be
+        invoked individually for each row just as is the case with an
+        "executemany" style invocation; a server- side default column
+        will no longer implicitly receive the value explicitly
+        specified for the first row, instead refusing to invoke
+        without an explicit value.
+
+        .. seealso::
+
+            :ref:`bug_3288`
+
+    .. change::
+        :tags: feature, general
+
+        Structural memory use has been improved via much more significant use
+        of ``__slots__`` for many internal objects.  This optimization is
+        particularly geared towards the base memory size of large applications
+        that have lots of tables and columns, and greatly reduces memory
+        size for a variety of high-volume objects including event listening
+        internals, comparator objects and parts of the ORM attribute and
+        loader strategy system.
+
+        .. seealso::
+
+            :ref:`feature_slots`
+
+    .. change::
+        :tags: bug, mysql
+        :tickets: 3283
+
+        The :class:`.mysql.SET` type has been overhauled to no longer
+        assume that the empty string, or a set with a single empty string
+        value, is in fact a set with a single empty string; instead, this
+        is by default treated as the empty set.  In order to handle persistence
+        of a :class:`.mysql.SET` that actually wants to include the blank
+        value ``''`` as a legitimate value, a new bitwise operational mode
+        is added which is enabled by the
+        :paramref:`.mysql.SET.retrieve_as_bitwise` flag, which will persist
+        and retrieve values unambiguously using their bitflag positioning.
+        Storage and retrieval of unicode values for driver configurations
+        that aren't converting unicode natively is also repaired.
+
+        .. seealso::
+
+            :ref:`change_3283`
+
+
+    .. change::
+        :tags: feature, schema
+        :tickets: 3282
+
+        The DDL generation system of :meth:`.MetaData.create_all`
+        and :meth:`.MetaData.drop_all` has been enhanced to in most
+        cases automatically handle the case of mutually dependent
+        foreign key constraints; the need for the
+        :paramref:`.ForeignKeyConstraint.use_alter` flag is greatly
+        reduced.  The system also works for constraints which aren't given
+        a name up front; only in the case of DROP is a name required for
+        at least one of the constraints involved in the cycle.
+
+        .. seealso::
+
+            :ref:`feature_3282`
+
+    .. change::
+        :tags: feature, schema
+
+        Added a new accessor :attr:`.Table.foreign_key_constraints`
+        to complement the :attr:`.Table.foreign_keys` collection,
+        as well as :attr:`.ForeignKeyConstraint.referred_table`.
+
+    .. change::
+        :tags: bug, sqlite
+        :tickets: 3244, 3261
+
+        UNIQUE and FOREIGN KEY constraints are now fully reflected on
+        SQLite both with and without names.  Previously, foreign key
+        names were ignored and unnamed unique constraints were skipped.
+        Thanks to Jon Nelson for assistance with this.
+
+    .. change::
+        :tags: feature, examples
+
+        A new suite of examples dedicated to providing a detailed study
+        into performance of SQLAlchemy ORM and Core, as well as the DBAPI,
+        from multiple perspectives.  The suite runs within a container
+        that provides built in profiling displays both through console
+        output as well as graphically via the RunSnake tool.
+
+        .. seealso::
+
+            :ref:`examples_performance`
+
+    .. change::
+        :tags: feature, orm
+        :tickets: 3100
+
+        A new series of :class:`.Session` methods which provide hooks
+        directly into the unit of work's facility for emitting INSERT
+        and UPDATE statements has been created.  When used correctly,
+        this expert-oriented system can allow ORM-mappings to be used
+        to generate bulk insert and update statements batched into
+        executemany groups, allowing the statements to proceed at
+        speeds that rival direct use of the Core.
+
+        .. seealso::
+
+            :ref:`bulk_operations`
 
     .. change::
         :tags: feature, mssql
@@ -109,7 +328,7 @@
         :tags: bug, mysql
         :tickets: 3263
 
-        The :meth:`.Operators.match` operator is now handled such that the
+        The :meth:`.ColumnOperators.match` operator is now handled such that the
         return type is not strictly assumed to be boolean; it now
         returns a :class:`.Boolean` subclass called :class:`.MatchType`.
         The type will still produce boolean behavior when used in Python
@@ -823,7 +1042,7 @@
     .. change::
         :tags: bug, orm, py3k
 
-        The :class:`.IdentityMap` exposed from :class:`.Session.identity`
+        The :class:`.IdentityMap` exposed from :attr:`.Session.identity_map`
         now returns lists for ``items()`` and ``values()`` in Py3K.
         Early porting to Py3K here had these returning iterators, when
         they technically should be "iterable views"..for now, lists are OK.
@@ -873,7 +1092,7 @@
         :tags: orm, feature
         :tickets: 2971
 
-        The :meth:`.InspectionAttr.info` collection is now moved down to
+        The :attr:`.InspectionAttr.info` collection is now moved down to
         :class:`.InspectionAttr`, where in addition to being available
         on all :class:`.MapperProperty` objects, it is also now available
         on hybrid properties, association proxies, when accessed via
@@ -921,7 +1140,7 @@
         :tags: bug, orm
         :tickets: 3117
 
-        The "evaulator" for query.update()/delete() won't work with multi-table
+        The "evaluator" for query.update()/delete() won't work with multi-table
         updates, and needs to be set to `synchronize_session=False` or
         `synchronize_session='fetch'`; this now raises an exception, with a
         message to change the synchronize setting.

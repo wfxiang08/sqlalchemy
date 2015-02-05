@@ -656,6 +656,10 @@ class DefaultRequirements(SuiteRequirements):
                         'postgresql+pg8000', None, None,
                         'postgresql+pg8000 has FP inaccuracy even with '
                         'only four decimal places '),
+                    (
+                        'postgresql+psycopg2cffi', None, None,
+                        'postgresql+psycopg2cffi has FP inaccuracy even with '
+                        'only four decimal places '),
                 ])
 
     @property
@@ -756,6 +760,10 @@ class DefaultRequirements(SuiteRequirements):
                     "+psycopg2", None, None,
                     "psycopg2 2.4 no longer accepts percent "
                     "sign in bind placeholders"),
+                (
+                    "+psycopg2cffi", None, None,
+                    "psycopg2cffi does not accept percent signs in "
+                    "bind placeholders"),
                 ("mysql", None, None, "executemany() doesn't work here")
             ]
         )
@@ -808,3 +816,9 @@ class DefaultRequirements(SuiteRequirements):
         return against(config, 'mysql') and \
                 config.db.dialect._detect_casing(config.db) == 0
 
+    @property
+    def postgresql_utf8_server_encoding(self):
+        return only_if(
+            lambda config: against(config, 'postgresql') and
+            config.db.scalar("show server_encoding").lower() == "utf8"
+        )
