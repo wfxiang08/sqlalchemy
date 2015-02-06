@@ -26,7 +26,7 @@ from . import (
     exc as orm_exc, loading
 )
 from .base import _entity_descriptor, _is_aliased_class, \
-    _is_mapped_class, _orm_columns, _generative
+    _is_mapped_class, _orm_columns, _generative, InspectionAttr
 from .path_registry import PathRegistry
 from .util import (
     AliasedClass, ORMAdapter, join as orm_join, with_parent, aliased
@@ -3348,7 +3348,7 @@ class _MapperEntity(_QueryEntity):
 
 
 @inspection._self_inspects
-class Bundle(object):
+class Bundle(InspectionAttr):
     """A grouping of SQL expressions that are returned by a :class:`.Query`
     under one namespace.
 
@@ -3538,14 +3538,20 @@ class _ColumnEntity(_QueryEntity):
     def __init__(self, query, column, namespace=None):
         self.expr = column
         self.namespace = namespace
+        search_entities = True
 
         if isinstance(column, util.string_types):
             column = sql.literal_column(column)
             self._label_name = column.name
+            search_entities = False
+            _entity = None
         elif isinstance(column, (
             attributes.QueryableAttribute,
             interfaces.PropComparator
         )):
+            _entity = column._parententity
+            if _entity is not None:
+                search_entities = False
             self._label_name = column.key
             column = column._query_clause_element()
             if isinstance(column, Bundle):
@@ -3568,6 +3574,7 @@ class _ColumnEntity(_QueryEntity):
             )
         else:
             self._label_name = getattr(column, 'key', None)
+            search_entities = True
 
         self.type = type_ = column.type
         if type_.hashable:
@@ -3598,30 +3605,38 @@ class _ColumnEntity(_QueryEntity):
         # leaking out their entities into the main select construct
         self.actual_froms = actual_froms = set(column._from_objects)
 
-        all_elements = [
-            elem for elem in visitors.iterate(column, {})
-            if 'parententity' in elem._annotations
-        ]
-
-        self.entities = util.unique_list(
-            elem._annotations['parententity']
-            for elem in all_elements
-            if 'parententity' in elem._annotations
-        )
-
-        self._from_entities = set(
-            elem._annotations['parententity']
-            for elem in all_elements
-            if 'parententity' in elem._annotations
-            and actual_froms.intersection(elem._from_objects)
-        )
-
-        if self.entities:
-            self.entity_zero = self.entities[0]
-        elif self.namespace is not None:
-            self.entity_zero = self.namespace
+        if not search_entities:
+            self.entity_zero = _entity
+            if _entity:
+                self.entities = [_entity]
+            else:
+                self.entities = []
+            self._from_entities = set(self.entities)
         else:
-            self.entity_zero = None
+            all_elements = [
+                elem for elem in visitors.iterate(column, {})
+                if 'parententity' in elem._annotations
+            ]
+
+            self.entities = util.unique_list(
+                elem._annotations['parententity']
+                for elem in all_elements
+                if 'parententity' in elem._annotations
+            )
+
+            self._from_entities = set(
+                elem._annotations['parententity']
+                for elem in all_elements
+                if 'parententity' in elem._annotations
+                and actual_froms.intersection(elem._from_objects)
+            )
+
+            if self.entities:
+                self.entity_zero = self.entities[0]
+            elif self.namespace is not None:
+                self.entity_zero = self.namespace
+            else:
+                self.entity_zero = None
 
     supports_single_entity = False
 

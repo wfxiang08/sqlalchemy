@@ -884,13 +884,13 @@ class RelationshipProperty(StrategizedProperty):
 
             """
             self.prop = prop
-            self._parentmapper = parentmapper
+            self._parententity = parentmapper
             self._adapt_to_entity = adapt_to_entity
             if of_type:
                 self._of_type = of_type
 
         def adapt_to_entity(self, adapt_to_entity):
-            return self.__class__(self.property, self._parentmapper,
+            return self.__class__(self.property, self._parententity,
                                   adapt_to_entity=adapt_to_entity,
                                   of_type=self._of_type)
 
@@ -942,7 +942,7 @@ class RelationshipProperty(StrategizedProperty):
             """
             return RelationshipProperty.Comparator(
                 self.property,
-                self._parentmapper,
+                self._parententity,
                 adapt_to_entity=self._adapt_to_entity,
                 of_type=cls)
 

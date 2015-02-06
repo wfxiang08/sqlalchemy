@@ -1,4 +1,4 @@
-from ..orm.query import QueryContext, Query
+from ..orm.query import Query
 from ..orm import strategies, attributes, properties, \
     strategy_options, util as orm_util, interfaces
 from .. import log as sqla_log
@@ -176,6 +176,21 @@ class Result(object):
             return ret[0]
         else:
             return None
+
+    def one(self):
+        """Return exactly one result or raise an exception.
+
+        """
+        ret = list(self)
+
+        l = len(ret)
+        if l == 1:
+            return ret[0]
+        elif l == 0:
+            raise orm_exc.NoResultFound("No row was found for one()")
+        else:
+            raise orm_exc.MultipleResultsFound(
+                "Multiple rows were found for one()")
 
     def all(self):
         return list(self)
