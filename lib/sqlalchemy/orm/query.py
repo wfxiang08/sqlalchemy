@@ -3683,10 +3683,15 @@ class _ColumnEntity(_QueryEntity):
 
 
 class QueryContext(object):
-    multi_row_eager_loaders = False
-    adapter = None
-    froms = ()
-    for_update = None
+    __slots__ = (
+        'multi_row_eager_loaders', 'adapter', 'froms', 'for_update',
+        'query', 'session', 'autoflush', 'populate_existing',
+        'invoke_all_eagers', 'version_check', 'refresh_state',
+        'primary_columns', 'secondary_columns', 'eager_order_by',
+        'eager_joins', 'create_eager_joins', 'propagate_options',
+        'attributes', 'statement', 'from_clause', 'whereclause',
+        'order_by', 'labels', '_for_update_arg', 'runid', 'partials'
+    )
 
     def __init__(self, query):
 
@@ -3703,6 +3708,10 @@ class QueryContext(object):
             self.whereclause = query._criterion
             self.order_by = query._order_by
 
+        self.multi_row_eager_loaders = False
+        self.adapter = None
+        self.froms = ()
+        self.for_update = None
         self.query = query
         self.session = query.session
         self.autoflush = query._autoflush

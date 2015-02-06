@@ -348,7 +348,7 @@ class NoLoader(AbstractRelationshipLoader):
 @log.class_logger
 @properties.RelationshipProperty.strategy_for(lazy=True)
 @properties.RelationshipProperty.strategy_for(lazy="select")
-class LazyLoader(AbstractRelationshipLoader):
+class LazyLoader(AbstractRelationshipLoader, util.MemoizedSlots):
     """Provide loading behavior for a :class:`.RelationshipProperty`
     with "lazy=True", that is loads when first accessed.
 
@@ -416,8 +416,7 @@ class LazyLoader(AbstractRelationshipLoader):
             active_history=active_history
         )
 
-    @util.memoized_property
-    def _simple_lazy_clause(self):
+    def _memoized_attr__simple_lazy_clause(self):
         criterion, bind_to_col, rev = (
             self._lazywhere,
             self._bind_to_col,
