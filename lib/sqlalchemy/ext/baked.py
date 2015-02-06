@@ -270,17 +270,28 @@ class Result(object):
 
 
 def bake_lazy_loaders():
+    strategies.LazyLoader._strategy_keys[:] = []
+    BakedLazyLoader._strategy_keys[:] = []
+
     properties.RelationshipProperty.strategy_for(
         lazy="select")(BakedLazyLoader)
     properties.RelationshipProperty.strategy_for(
         lazy=True)(BakedLazyLoader)
+    properties.RelationshipProperty.strategy_for(
+        lazy="baked_select")(BakedLazyLoader)
 
 
 def unbake_lazy_loaders():
+    strategies.LazyLoader._strategy_keys[:] = []
+    BakedLazyLoader._strategy_keys[:] = []
+
     properties.RelationshipProperty.strategy_for(
         lazy="select")(strategies.LazyLoader)
     properties.RelationshipProperty.strategy_for(
         lazy=True)(strategies.LazyLoader)
+    properties.RelationshipProperty.strategy_for(
+        lazy="baked_select")(BakedLazyLoader)
+    assert strategies.LazyLoader._strategy_keys
 
 
 @sqla_log.class_logger

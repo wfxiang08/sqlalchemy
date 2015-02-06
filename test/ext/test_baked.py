@@ -1,9 +1,10 @@
 from sqlalchemy.orm import Session, subqueryload, \
-    mapper, relationship, lazyload
+    mapper, relationship, lazyload, clear_mappers
 from sqlalchemy.testing import eq_, is_, is_not_, assert_raises
 from sqlalchemy import testing
 from test.orm import _fixtures
 from sqlalchemy.ext.baked import BakedQuery, baked_lazyload, BakedLazyLoader
+from sqlalchemy.ext import baked
 from sqlalchemy import bindparam, func
 from sqlalchemy.orm import exc as orm_exc
 import itertools
@@ -539,6 +540,35 @@ class LazyLoaderTest(BakedTest):
                 el.mock_calls[0][1][1],
                 u1._sa_instance_state
             )
+
+    def test_invocation_systemwide_loaders(self):
+        baked.bake_lazy_loaders()
+        try:
+            User, Address = self._o2m_fixture()
+
+            sess = Session()
+            q = sess.query(User).options(lazyload(User.addresses))
+            with mock.patch.object(BakedLazyLoader, "_emit_lazyload") as el:
+                u1 = q.first()
+                u1.addresses
+                # invoked
+                is_(
+                    el.mock_calls[0][1][1],
+                    u1._sa_instance_state
+                )
+        finally:
+            baked.unbake_lazy_loaders()
+
+        clear_mappers()
+        User, Address = self._o2m_fixture()
+        sess = Session()
+        q = sess.query(User).options(lazyload(User.addresses))
+
+        with mock.patch.object(BakedLazyLoader, "_emit_lazyload") as el:
+            u1 = q.first()
+            u1.addresses
+            # not invoked
+            eq_(el.mock_calls, [])
 
     def test_baked_lazy_loading_option_o2m(self):
         User, Address = self._o2m_fixture()
