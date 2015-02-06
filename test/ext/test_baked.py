@@ -1,11 +1,13 @@
-from sqlalchemy.orm import Session, subqueryload, mapper, relationship
+from sqlalchemy.orm import Session, subqueryload, \
+    mapper, relationship, lazyload
 from sqlalchemy.testing import eq_, is_, is_not_, assert_raises
 from sqlalchemy import testing
 from test.orm import _fixtures
-from sqlalchemy.ext.baked import BakedQuery, baked_lazyload
+from sqlalchemy.ext.baked import BakedQuery, baked_lazyload, BakedLazyLoader
 from sqlalchemy import bindparam, func
 from sqlalchemy.orm import exc as orm_exc
 import itertools
+from sqlalchemy.testing import mock
 
 
 class BakedTest(_fixtures.FixtureTest):
@@ -124,6 +126,28 @@ class LikeQueryTest(BakedTest):
 
         mapper(User, cls.tables.users)
 
+    def test_first_no_result(self):
+        User = self.classes.User
+
+        bq = BakedQuery(lambda s: s.query(User))
+        bq += lambda q: q.filter(User.name == 'asdf')
+
+        eq_(
+            bq(Session()).first(),
+            None
+        )
+
+    def test_first_multiple_result(self):
+        User = self.classes.User
+
+        bq = BakedQuery(lambda s: s.query(User.id))
+        bq += lambda q: q.filter(User.name.like('%ed%')).order_by(User.id)
+
+        eq_(
+            bq(Session()).first(),
+            (8, )
+        )
+
     def test_one_no_result(self):
         User = self.classes.User
 
@@ -202,6 +226,8 @@ class LikeQueryTest(BakedTest):
 
 
 class ResultTest(BakedTest):
+    __backend__ = True
+
     @classmethod
     def setup_mappers(cls):
         User = cls.classes.User
@@ -225,6 +251,26 @@ class ResultTest(BakedTest):
                 bq(session).all(),
                 [(7, 'jack'), (8, 'ed'), (9, 'fred'), (10, 'chuck')]
             )
+
+    def test_different_limits(self):
+        User = self.classes.User
+
+        bq = BakedQuery(
+            lambda s: s.query(User.id, User.name).order_by(User.id))
+
+        bq += lambda q: q.limit(bindparam('limit')).offset(bindparam('offset'))
+        session = Session()
+
+        for i in range(4):
+            for limit, offset, exp in [
+                (2, 1, [(8, 'ed'), (9, 'fred')]),
+                (3, 0, [(7, 'jack'), (8, 'ed'), (9, 'fred')]),
+                (1, 2, [(9, 'fred')])
+            ]:
+                eq_(
+                    bq(session).params(limit=limit, offset=offset).all(),
+                    exp
+                )
 
     def test_spoiled_w_params(self):
         User = self.classes.User
@@ -399,35 +445,121 @@ class ResultTest(BakedTest):
 class LazyLoaderTest(BakedTest):
     run_setup_mappers = 'each'
 
-    def test_baked_lazy_loading_o2m(self):
+    def _o2m_fixture(self, lazy="select"):
         User = self.classes.User
         Address = self.classes.Address
 
         mapper(User, self.tables.users, properties={
             'addresses': relationship(
-                Address, order_by=self.tables.addresses.c.id)
+                Address, order_by=self.tables.addresses.c.id,
+                lazy=lazy)
         })
         mapper(Address, self.tables.addresses)
+        return User, Address
+
+    def _m2o_fixture(self):
+        User = self.classes.User
+        Address = self.classes.Address
+
+        mapper(User, self.tables.users)
+        mapper(Address, self.tables.addresses, properties={
+            'user': relationship(User)
+        })
+        return User, Address
+
+    def test_strategy_lookup(self):
+        """test that the lazy loader strategies aren't getting mixed up
+        with BakedLazyLoader as a subclass.
+
+        """
+        User, Address = self._o2m_fixture()
+
+        ll = User.addresses.property._get_strategy((('lazy', 'select'),))
+        assert not isinstance(ll, BakedLazyLoader)
+        eq_(ll._strategy_keys, [(('lazy', 'select'),), (('lazy', True),)])
+
+        ll = User.addresses.property._get_strategy((('lazy', True),))
+        assert not isinstance(ll, BakedLazyLoader)
+        eq_(ll._strategy_keys, [(('lazy', 'select'),), (('lazy', True),)])
+
+        bl = User.addresses.property._get_strategy((('lazy', 'baked_select'),))
+        assert isinstance(bl, BakedLazyLoader)
+        eq_(bl._strategy_keys, [(('lazy', 'baked_select'),)])
+
+    def test_invocation_per_state(self):
+        """test that BakedLazyLoader is getting invoked with the
+        baked_lazyload() loader.
+
+        """
+        User, Address = self._o2m_fixture()
+
+        sess = Session()
+        q = sess.query(User)
+
+        with mock.patch.object(BakedLazyLoader, "_emit_lazyload") as el:
+            u1 = q.first()
+            u1.addresses
+            # not invoked
+            eq_(el.mock_calls, [])
+
+        sess = Session()
+        q = sess.query(User).options(baked_lazyload(User.addresses))
+        with mock.patch.object(BakedLazyLoader, "_emit_lazyload") as el:
+            u1 = q.first()
+            u1.addresses
+            # invoked
+            is_(
+                el.mock_calls[0][1][1],
+                u1._sa_instance_state
+            )
+
+    def test_invocation_per_mapper(self):
+        """test that BakedLazyLoader is getting invoked with the
+        "baked_select" lazy setting.
+
+        """
+        User, Address = self._o2m_fixture(lazy="baked_select")
+
+        sess = Session()
+        q = sess.query(User).options(lazyload(User.addresses))
+
+        with mock.patch.object(BakedLazyLoader, "_emit_lazyload") as el:
+            u1 = q.first()
+            u1.addresses
+            # not invoked
+            eq_(el.mock_calls, [])
+
+        sess = Session()
+        q = sess.query(User)
+        with mock.patch.object(BakedLazyLoader, "_emit_lazyload") as el:
+            u1 = q.first()
+            u1.addresses
+            # invoked
+            is_(
+                el.mock_calls[0][1][1],
+                u1._sa_instance_state
+            )
+
+    def test_baked_lazy_loading_option_o2m(self):
+        User, Address = self._o2m_fixture()
+        self._test_baked_lazy_loading(set_option=True)
+
+    def test_baked_lazy_loading_mapped_o2m(self):
+        User, Address = self._o2m_fixture(lazy="baked_select")
+        self._test_baked_lazy_loading(set_option=False)
+
+    def _test_baked_lazy_loading(self, set_option):
+        User, Address = self.classes.User, self.classes.Address
 
         base_bq = BakedQuery(
             lambda s: s.query(User))
 
-        base_bq += lambda q: q.options(baked_lazyload(User.addresses))
+        if set_option:
+            base_bq += lambda q: q.options(baked_lazyload(User.addresses))
+
         base_bq += lambda q: q.order_by(User.id)
 
-        assert_result = [
-            User(id=7, addresses=[
-                Address(id=1, email_address='jack@bean.com')]),
-            User(id=8, addresses=[
-                Address(id=2, email_address='ed@wood.com'),
-                Address(id=3, email_address='ed@bettyboop.com'),
-                Address(id=4, email_address='ed@lala.com'),
-            ]),
-            User(id=9, addresses=[
-                Address(id=5)
-            ]),
-            User(id=10, addresses=[])
-        ]
+        assert_result = self.static.user_address_result
 
         for i in range(4):
             for cond1, cond2 in itertools.product(
@@ -476,13 +608,7 @@ class LazyLoaderTest(BakedTest):
                 sess.close()
 
     def test_baked_lazy_loading_m2o(self):
-        User = self.classes.User
-        Address = self.classes.Address
-
-        mapper(User, self.tables.users)
-        mapper(Address, self.tables.addresses, properties={
-            'user': relationship(User)
-        })
+        User, Address = self._m2o_fixture()
 
         base_bq = BakedQuery(
             lambda s: s.query(Address))
@@ -517,3 +643,10 @@ class LazyLoaderTest(BakedTest):
                     self.assert_sql_count(testing.db, go, 2)
 
                 sess.close()
+
+    # additional tests:
+    # 1. m2m w lazyload
+    # 2. o2m lazyload where m2o backrefs have an eager load, test
+    # that eager load is canceled out
+    # 3. uselist = False, uselist=False assertion
+

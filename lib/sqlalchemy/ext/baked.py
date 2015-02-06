@@ -4,6 +4,7 @@ from ..orm import strategies, attributes, properties, \
 from .. import log as sqla_log
 from ..sql import util as sql_util
 from ..orm import exc as orm_exc
+from .. import exc as sa_exc
 from .. import util
 
 import copy
@@ -55,12 +56,6 @@ class BakedQuery(object):
             return self.with_criteria(*other)
         else:
             return self.with_criteria(other)
-
-    @classmethod
-    def baked(cls, fn):
-        def decorate(*args):
-            return BakedQuery(fn, args)
-        return decorate
 
     def add_criteria(self, fn, *args):
         self._update_cache_key(fn, args)
@@ -155,8 +150,14 @@ class Result(object):
         self.session = session
         self._params = {}
 
-    def params(self, **kw):
-        self._params.update(**kw)
+    def params(self, *args, **kw):
+        if len(args) == 1:
+            kw.update(args[0])
+        elif len(args) > 0:
+            raise sa_exc.ArgumentError(
+                "params() takes zero or one positional argument, "
+                "which is a dictionary.")
+        self._params.update(kw)
         return self
 
     def _as_query(self):
@@ -188,9 +189,8 @@ class Result(object):
             with_session(self.session)._execute_and_instances(context)
 
     def first(self):
-        baked = self.bq.with_params(self._params)
-        self.bq.add_criteria(lambda q: q.slice(0, 1))
-        ret = list(baked.for_session(self.session))
+        bq = self.bq.with_criteria(lambda q: q.slice(0, 1))
+        ret = list(bq.for_session(self.session).params(self._params))
         if len(ret) > 0:
             return ret[0]
         else:
