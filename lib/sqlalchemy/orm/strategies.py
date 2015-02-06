@@ -417,10 +417,9 @@ class LazyLoader(AbstractRelationshipLoader, util.MemoizedSlots):
         )
 
     def _memoized_attr__simple_lazy_clause(self):
-        criterion, bind_to_col, rev = (
+        criterion, bind_to_col = (
             self._lazywhere,
-            self._bind_to_col,
-            self._equated_columns
+            self._bind_to_col
         )
 
         params = []
@@ -615,7 +614,7 @@ class LazyLoader(AbstractRelationshipLoader, util.MemoizedSlots):
             # class-level lazyloader installed.
             set_lazy_callable = InstanceState._row_processor(
                 mapper.class_manager,
-                LoadLazyAttribute(key), key)
+                LoadLazyAttribute(key, self._strategy_keys[0]), key)
 
             populators["new"].append((self.key, set_lazy_callable))
         elif context.populate_existing or mapper.always_refresh:
@@ -636,14 +635,15 @@ class LazyLoader(AbstractRelationshipLoader, util.MemoizedSlots):
 class LoadLazyAttribute(object):
     """serializable loader object used by LazyLoader"""
 
-    def __init__(self, key):
+    def __init__(self, key, strategy_key=(('lazy', 'select'),)):
         self.key = key
+        self.strategy_key = strategy_key
 
     def __call__(self, state, passive=attributes.PASSIVE_OFF):
         key = self.key
         instance_mapper = state.manager.mapper
         prop = instance_mapper._props[key]
-        strategy = prop._strategies[(('lazy', 'select'),)]
+        strategy = prop._strategies[self.strategy_key]
 
         return strategy._load_for_state(state, passive)
 
@@ -997,6 +997,12 @@ class SubqueryLoader(AbstractRelationshipLoader):
 
         if subq is None:
             return
+
+        assert subq.session is context.session, (
+            "Subquery session doesn't refer to that of "
+            "our context.  Are there broken context caching "
+            "schemes being used?"
+        )
 
         local_cols = self.parent_property.local_columns
 

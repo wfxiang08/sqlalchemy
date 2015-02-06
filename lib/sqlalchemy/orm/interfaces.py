@@ -529,7 +529,9 @@ class StrategizedProperty(MapperProperty):
     @classmethod
     def strategy_for(cls, **kw):
         def decorate(dec_cls):
-            if not hasattr(dec_cls, '_strategy_keys'):
+            # ensure each subclass of the strategy has its
+            # own _strategy_keys collection
+            if '_strategy_keys' not in dec_cls.__dict__:
                 dec_cls._strategy_keys = []
             key = tuple(sorted(kw.items()))
             cls._all_strategies[cls][key] = dec_cls

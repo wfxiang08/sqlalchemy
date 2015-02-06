@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 
 
 class BakedQuery(object):
-    _global_bakery = {}
+    _global_bakery = util.LRUCache(1000)
 
     __slots__ = 'steps', '_bakery', '_cache_key', '_spoiled'
 
@@ -117,6 +117,14 @@ class BakedQuery(object):
         return query
 
     def _bake_subquery_loaders(self, session, context):
+        """convert subquery eager loaders in the cache into baked queries.
+
+        For subquery eager loading to work, all we need here is that the
+        Query point to the correct session when it is run.  However, since
+        we are "baking" anyway, we may as well also turn the query into
+        a "baked" query so that we save on performance too.
+
+        """
         context.attributes['baked_queries'] = baked_queries = []
         for k, v in context.attributes.items():
             if isinstance(v, Query):
@@ -128,10 +136,15 @@ class BakedQuery(object):
                 del context.attributes[k]
 
     def _unbake_subquery_loaders(self, session, context, params):
+        """Retrieve subquery eager loaders stored by _bake_subquery_loaders
+        and turn them back into Result objects that will iterate just
+        like a Query object.
+
+        """
         for k, cache_key, query in context.attributes["baked_queries"]:
             bk = BakedQuery(lambda sess: query.with_session(sess))
             bk._cache_key = cache_key
-            context.attributes[k] = bk.for_session(session).params(params)
+            context.attributes[k] = bk.for_session(session).params(**params)
 
 
 class Result(object):
@@ -146,10 +159,16 @@ class Result(object):
         self._params.update(**kw)
         return self
 
+    def _as_query(self):
+        return self.bq._as_query(self.session).params(self._params)
+
+    def __str__(self):
+        return str(self._as_query())
+
     def __iter__(self):
         bq = self.bq
         if bq._spoiled:
-            return iter(bq._as_query(self.session))
+            return iter(self._as_query())
 
         if bq._cache_key not in bq._bakery:
             bq._bake(self.session)
@@ -240,9 +259,7 @@ class Result(object):
             for id_val, primary_key in zip(ident, mapper.primary_key)
         ])
 
-        bq.update_params(**params)
-
-        result = list(bq.for_session(self.session))
+        result = list(bq.for_session(self.session).params(**params))
         l = len(result)
         if l > 1:
             raise orm_exc.MultipleResultsFound()
@@ -271,7 +288,6 @@ def unbake_lazy_loaders():
 class BakedLazyLoader(strategies.LazyLoader):
 
     def _emit_lazyload(self, session, state, ident_key, passive):
-
         q = BakedQuery(
             lambda session: session.query(self.mapper),
             bakery=self.mapper._compiled_cache)
@@ -301,10 +317,12 @@ class BakedLazyLoader(strategies.LazyLoader):
 
         if state.load_options:
             q.spoil()
-            q.add_criteria(lambda q: q._conditional_options(*state.load_options))
+            q.add_criteria(
+                lambda q: q._conditional_options(*state.load_options))
 
         if self.use_get:
-            return q._load_on_ident(q.query, ident_key)
+            return q(session)._load_on_ident(
+                session.query(self.mapper), ident_key)
 
         if self.parent_property.order_by:
             q.add_criteria(
@@ -320,7 +338,8 @@ class BakedLazyLoader(strategies.LazyLoader):
                 q.add_criteria(
                     lambda q:
                     q.options(
-                        strategy_options.Load(rev.parent).lazyload(rev.key)))
+                        strategy_options.Load(
+                            rev.parent).baked_lazyload(rev.key)))
 
         lazy_clause, params = self._generate_lazy_clause(state, passive)
 
@@ -329,7 +348,6 @@ class BakedLazyLoader(strategies.LazyLoader):
                 return None
 
         q.add_criteria(lambda q: q.filter(lazy_clause))
-
         result = q(session).params(**params).all()
         if self.uselist:
             return result
@@ -345,3 +363,27 @@ class BakedLazyLoader(strategies.LazyLoader):
                 return result[0]
             else:
                 return None
+
+
+@strategy_options.loader_option()
+def baked_lazyload(loadopt, attr):
+    """Indicate that the given attribute should be loaded using "lazy"
+    loading with a "baked" query used in the load.
+
+    """
+    return loadopt.set_relationship_strategy(attr, {"lazy": "baked_select"})
+
+
+@baked_lazyload._add_unbound_fn
+def baked_lazyload(*keys):
+    return strategy_options._UnboundLoad._from_keys(
+        strategy_options._UnboundLoad.baked_lazyload, keys, False, {})
+
+
+@baked_lazyload._add_unbound_all_fn
+def baked_lazyload_all(*keys):
+    return strategy_options._UnboundLoad._from_keys(
+        strategy_options._UnboundLoad.baked_lazyload, keys, True, {})
+
+baked_lazyload = baked_lazyload._unbound_fn
+baked_lazyload_all = baked_lazyload_all._unbound_all_fn
