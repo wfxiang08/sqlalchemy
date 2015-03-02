@@ -24,6 +24,67 @@
     on compatibility concerns, see :doc:`/changelog/migration_10`.
 
     .. change::
+        :tags: change, orm
+
+        Mapped attributes marked as deferred without explicit undeferral
+        will now remain "deferred" even if their column is otherwise
+        present in the result set in some way.   This is a performance
+        enhancement in that an ORM load no longer spends time searching
+        for each deferred column when the result set is obtained.  However,
+        for an application that has been relying upon this, an explicit
+        :func:`.undefer` or similar option should now be used.
+
+    .. change::
+        :tags: feature, orm
+        :tickets: 3307
+
+        Mapped state internals have been reworked to allow for a 50% reduction
+        in callcounts specific to the "expiration" of objects, as in
+        the "auto expire" feature of :meth:`.Session.commit` and
+        for :meth:`.Session.expire_all`, as well as in the "cleanup" step
+        which occurs when object states are garbage collected.
+
+    .. change::
+        :tags: bug, mysql
+
+        The MySQL dialect now supports CAST on types that are constructed
+        as :class:`.TypeDecorator` objects.
+
+    .. change::
+        :tags: bug, mysql
+        :tickets: 3237
+
+        A warning is emitted when :func:`.cast` is used with the MySQL
+        dialect on a type where MySQL does not support CAST; MySQL only
+        supports CAST on a subset of datatypes.   SQLAlchemy has for a long
+        time just omitted the CAST for unsupported types in the case of
+        MySQL.  While we don't want to change this now, we emit a warning
+        to show that it's taken place.   A warning is also emitted when
+        a CAST is used with an older MySQL version (< 4) that doesn't support
+        CAST at all, it's skipped in this case as well.
+
+    .. change::
+        :tags: feature, sql
+        :tickets: 3087
+
+        Literal values within a :class:`.DefaultClause`, which is invoked
+        when using the :paramref:`.Column.server_default` parameter, will
+        now be rendered using the "inline" compiler, so that they are rendered
+        as-is, rather than as bound parameters.
+
+        .. seealso::
+
+            :ref:`change_3087`
+
+    .. change::
+        :tags: feature, oracle
+        :pullreq: github:152
+
+        Added support for cx_oracle connections to a specific service
+        name, as opposed to a tns name, by passing ``?service_name=<name>``
+        to the URL.  Pull request courtesy Sławomir Ehlert.
+
+    .. change::
         :tags: feature, mysql
         :tickets: 3155
 

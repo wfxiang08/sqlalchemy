@@ -237,14 +237,21 @@ class SessionTransaction(object):
             self.session, self, nested=nested)
 
     def _iterate_parents(self, upto=None):
-        if self._parent is upto:
-            return (self,)
-        else:
-            if self._parent is None:
+
+        current = self
+        result = ()
+        while current:
+            result += (current, )
+            if current._parent is upto:
+                break
+            elif current._parent is None:
                 raise sa_exc.InvalidRequestError(
                     "Transaction %s is not on the active transaction list" % (
                         upto))
-            return (self,) + self._parent._iterate_parents(upto)
+            else:
+                current = current._parent
+
+        return result
 
     def _take_snapshot(self):
         if not self._is_transaction_boundary:
@@ -404,26 +411,29 @@ class SessionTransaction(object):
             for subtransaction in stx._iterate_parents(upto=self):
                 subtransaction.close()
 
+        boundary = self
         if self._state in (ACTIVE, PREPARED):
             for transaction in self._iterate_parents():
                 if transaction._parent is None or transaction.nested:
                     transaction._rollback_impl()
                     transaction._state = DEACTIVE
+                    boundary = transaction
                     break
                 else:
                     transaction._state = DEACTIVE
 
         sess = self.session
 
-        if self.session._enable_transaction_accounting and \
+        if sess._enable_transaction_accounting and \
                 not sess._is_clean():
+
             # if items were added, deleted, or mutated
             # here, we need to re-restore the snapshot
             util.warn(
                 "Session's state has been changed on "
                 "a non-active transaction - this state "
                 "will be discarded.")
-            self._restore_snapshot(dirty_only=self.nested)
+            boundary._restore_snapshot(dirty_only=boundary.nested)
 
         self.close()
         if self._parent and _capture_exception:
@@ -2691,9 +2701,13 @@ def make_transient(instance):
     if s:
         s._expunge_state(state)
 
-    # remove expired state and
-    # deferred callables
-    state.callables.clear()
+    # remove expired state
+    state.expired_attributes.clear()
+
+    # remove deferred callables
+    if state.callables:
+        del state.callables
+
     if state.key:
         del state.key
     if state.deleted:

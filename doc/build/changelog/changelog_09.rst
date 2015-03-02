@@ -15,6 +15,36 @@
     :version: 0.9.9
 
     .. change::
+        :tags: bug, orm
+        :tickets: 3310
+
+        Fixed bugs in ORM object comparisons where comparison of
+        many-to-one ``!= None`` would fail if the source were an aliased
+        class, or if the query needed to apply special aliasing to the
+        expression due to aliased joins or polymorphic querying; also fixed
+        bug in the case where comparing a many-to-one to an object state
+        would fail if the query needed to apply special aliasing
+        due to aliased joins or polymorphic querying.
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 3309
+
+        Fixed bug where internal assertion would fail in the case where
+        an ``after_rollback()`` handler for a :class:`.Session` incorrectly
+        adds state to that :class:`.Session` within the handler, and the task
+        to warn and remove this state (established by :ticket:`2389`) attempts
+        to proceed.
+
+    .. change::
+        :tags: bug, orm
+        :pullreq: github:147
+
+        Fixed bug where TypeError raised when :meth:`.Query.join` called
+        with unknown kw arguments would raise its own TypeError due
+        to broken formatting.  Pull request courtesy Malthe Borch.
+
+    .. change::
         :tags: bug, engine
         :tickets: 3302
 

@@ -290,30 +290,42 @@ class ReflectionTest(fixtures.TestBase, AssertsExecutionResults):
 
         """
         meta = self.metadata
-        Table('nn_t', meta)
-        testing.db.execute("""
-            CREATE TABLE nn_t (
-                x INTEGER NULL,
-                y INTEGER NOT NULL,
-                z INTEGER,
-                q TIMESTAMP NULL,
-                p TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-                r TIMESTAMP NOT NULL,
-                s TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                t TIMESTAMP,
-                u TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        eq_(
+
+        # this is ideally one table, but older MySQL versions choke
+        # on the multiple TIMESTAMP columns
+
+        reflected = []
+        for idx, cols in enumerate([
             [
-                {
-                    "name": d['name'],
-                    "nullable": d['nullable'],
-                    "default": d['default'],
-                }
-                for d in
-                inspect(testing.db).get_columns('nn_t')
+                "x INTEGER NULL",
+                "y INTEGER NOT NULL",
+                "z INTEGER",
+                "q TIMESTAMP NULL"
             ],
+
+            ["p TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP"],
+            ["r TIMESTAMP NOT NULL"],
+            ["s TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"],
+            ["t TIMESTAMP"],
+            ["u TIMESTAMP DEFAULT CURRENT_TIMESTAMP"]
+        ]):
+            Table("nn_t%d" % idx, meta) # to allow DROP
+
+            testing.db.execute("""
+                CREATE TABLE nn_t%d (
+                    %s
+                )
+            """ % (idx, ", \n".join(cols)))
+
+            reflected.extend(
+                {
+                    "name": d['name'], "nullable": d['nullable'],
+                    "default": d['default']}
+                for d in inspect(testing.db).get_columns("nn_t%d" % idx)
+            )
+
+        eq_(
+            reflected,
             [
                 {'name': 'x', 'nullable': True, 'default': None},
                 {'name': 'y', 'nullable': False, 'default': None},
@@ -322,11 +334,11 @@ class ReflectionTest(fixtures.TestBase, AssertsExecutionResults):
                 {'name': 'p', 'nullable': True,
                  'default': 'CURRENT_TIMESTAMP'},
                 {'name': 'r', 'nullable': False,
-                 'default': "'0000-00-00 00:00:00'"},
+                 'default': "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"},
                 {'name': 's', 'nullable': False,
                  'default': 'CURRENT_TIMESTAMP'},
                 {'name': 't', 'nullable': False,
-                 'default': "'0000-00-00 00:00:00'"},
+                 'default': "CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"},
                 {'name': 'u', 'nullable': False,
                  'default': 'CURRENT_TIMESTAMP'},
             ]

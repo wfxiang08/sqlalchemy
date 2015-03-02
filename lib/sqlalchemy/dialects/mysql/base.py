@@ -1683,9 +1683,12 @@ class MySQLCompiler(compiler.SQLCompiler):
     def get_from_hint_text(self, table, text):
         return text
 
-    def visit_typeclause(self, typeclause):
-        type_ = typeclause.type.dialect_impl(self.dialect)
-        if isinstance(type_, sqltypes.Integer):
+    def visit_typeclause(self, typeclause, type_=None):
+        if type_ is None:
+            type_ = typeclause.type.dialect_impl(self.dialect)
+        if isinstance(type_, sqltypes.TypeDecorator):
+            return self.visit_typeclause(typeclause, type_.impl)
+        elif isinstance(type_, sqltypes.Integer):
             if getattr(type_, 'unsigned', False):
                 return 'UNSIGNED INTEGER'
             else:
@@ -1710,10 +1713,17 @@ class MySQLCompiler(compiler.SQLCompiler):
     def visit_cast(self, cast, **kwargs):
         # No cast until 4, no decimals until 5.
         if not self.dialect._supports_cast:
+            util.warn(
+                "Current MySQL version does not support "
+                "CAST; the CAST will be skipped.")
             return self.process(cast.clause.self_group())
 
         type_ = self.process(cast.typeclause)
         if type_ is None:
+            util.warn(
+                "Datatype %s does not support CAST on MySQL; "
+                "the CAST will be skipped." %
+                self.dialect.type_compiler.process(cast.typeclause.type))
             return self.process(cast.clause.self_group())
 
         return 'CAST(%s AS %s)' % (self.process(cast.clause), type_)
@@ -1871,7 +1881,8 @@ class MySQLDDLCompiler(compiler.DDLCompiler):
         if default is not None:
             colspec.append('DEFAULT ' + default)
 
-        if column is column.table._autoincrement_column and \
+        if column.table is not None \
+            and column is column.table._autoincrement_column and \
                 column.server_default is None:
             colspec.append('AUTO_INCREMENT')
 

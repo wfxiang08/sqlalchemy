@@ -8,7 +8,7 @@ What's New in SQLAlchemy 1.0?
     undergoing maintenance releases as of May, 2014,
     and SQLAlchemy version 1.0, as of yet unreleased.
 
-    Document last updated: January 30, 2015
+    Document last updated: March 1, 2015
 
 Introduction
 ============
@@ -669,6 +669,41 @@ Will render::
 The feature can be disabled using
 :paramref:`.Insert.from_select.include_defaults`.
 
+.. _change_3087:
+
+Column server defaults now render literal values
+------------------------------------------------
+
+The "literal binds" compiler flag is switched on when a
+:class:`.DefaultClause`, set up by :paramref:`.Column.server_default`
+is present as a SQL expression to be compiled.  This allows literals
+embedded in SQL to render correctly, such as::
+
+    from sqlalchemy import Table, Column, MetaData, Text
+    from sqlalchemy.schema import CreateTable
+    from sqlalchemy.dialects.postgresql import ARRAY, array
+    from sqlalchemy.dialects import postgresql
+
+    metadata = MetaData()
+
+    tbl = Table("derp", metadata,
+        Column("arr", ARRAY(Text),
+                    server_default=array(["foo", "bar", "baz"])),
+    )
+
+    print(CreateTable(tbl).compile(dialect=postgresql.dialect()))
+
+Now renders::
+
+    CREATE TABLE derp (
+        arr TEXT[] DEFAULT ARRAY['foo', 'bar', 'baz']
+    )
+
+Previously, the literal values ``"foo", "bar", "baz"`` would render as
+bound parameters, which are useless in DDL.
+
+:ticket:`3087`
+
 .. _feature_3184:
 
 UniqueConstraint is now part of the Table reflection process
@@ -1052,6 +1087,18 @@ as all the subclasses normally refer to the same table::
 
 :ticket:`3233`
 
+
+Deferred Columns No Longer Implicitly Undefer
+---------------------------------------------
+
+Mapped attributes marked as deferred without explicit undeferral
+will now remain "deferred" even if their column is otherwise
+present in the result set in some way.   This is a performance
+enhancement in that an ORM load no longer spends time searching
+for each deferred column when the result set is obtained.  However,
+for an application that has been relying upon this, an explicit
+:func:`.undefer` or similar option should now be used, in order
+to prevent a SELECT from being emitted when the attribute is accessed.
 
 
 .. _migration_deprecated_orm_events:
