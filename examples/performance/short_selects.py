@@ -8,7 +8,7 @@ from . import Profiler
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String, create_engine, \
     bindparam, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, deferred
 from sqlalchemy.ext import baked
 import random
 
@@ -23,7 +23,11 @@ class Customer(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(255))
     description = Column(String(255))
-
+    q = Column(Integer)
+    p = Column(Integer)
+    x = deferred(Column(Integer))
+    y = deferred(Column(Integer))
+    z = deferred(Column(Integer))
 
 Profiler.init("short_selects", num=10000)
 
@@ -36,7 +40,13 @@ def setup_database(dburl, echo, num):
     Base.metadata.create_all(engine)
     sess = Session(engine)
     sess.add_all([
-        Customer(id=i, name='c%d' % i, description="c%d" % i)
+        Customer(
+            id=i, name='c%d' % i, description="c%d" % i,
+            q="q%d" % i,
+            p="p%d" % i,
+            x="x%d" % i,
+            y="y%d" % i,
+        )
         for i in ids
     ])
     sess.commit()
