@@ -27,14 +27,20 @@ class StateChangeTest(BakedTest):
     def setup(self):
         self._cache = {}
 
+    def _assert_cache_key(self, key, elements):
+        eq_(
+            key,
+            tuple(elem.__code__ for elem in elements)
+        )
+
     def test_initial_key(self):
         User = self.classes.User
         session = Session()
         l1 = lambda: session.query(User)
         q1 = BakedQuery(l1, bakery=self._cache)
-        eq_(
+        self._assert_cache_key(
             q1._cache_key,
-            (l1.func_code.co_filename, l1.func_code.co_firstlineno)
+            [l1]
         )
         eq_(q1.steps, [l1])
 
@@ -44,19 +50,18 @@ class StateChangeTest(BakedTest):
         l1 = lambda: session.query(User)
         l2 = lambda q: q.filter(User.name == bindparam('name'))
         q1 = BakedQuery(l1, bakery=self._cache)
-        eq_(
+        self._assert_cache_key(
             q1._cache_key,
-            (l1.func_code.co_filename, l1.func_code.co_firstlineno)
+            [l1]
         )
         eq_(q1.steps, [l1])
 
         q2 = q1.add_criteria(l2)
         is_(q2, q1)
 
-        eq_(
+        self._assert_cache_key(
             q1._cache_key,
-            (l1.func_code.co_filename, l1.func_code.co_firstlineno) +
-            (l2.func_code.co_filename, l2.func_code.co_firstlineno)
+            [l1, l2]
         )
         eq_(q1.steps, [l1, l2])
 
@@ -66,17 +71,16 @@ class StateChangeTest(BakedTest):
         l1 = lambda: session.query(User)
         l2 = lambda q: q.filter(User.name == bindparam('name'))
         q1 = BakedQuery(l1, bakery=self._cache)
-        eq_(
+        self._assert_cache_key(
             q1._cache_key,
-            (l1.func_code.co_filename, l1.func_code.co_firstlineno)
+            [l1]
         )
 
         q1 += l2
 
-        eq_(
+        self._assert_cache_key(
             q1._cache_key,
-            (l1.func_code.co_filename, l1.func_code.co_firstlineno) +
-            (l2.func_code.co_filename, l2.func_code.co_firstlineno)
+            [l1, l2]
         )
 
     def test_chained_add(self):
@@ -89,14 +93,13 @@ class StateChangeTest(BakedTest):
         q2 = q1.with_criteria(l2)
         is_not_(q2, q1)
 
-        eq_(
+        self._assert_cache_key(
             q1._cache_key,
-            (l1.func_code.co_filename, l1.func_code.co_firstlineno)
+            [l1]
         )
-        eq_(
+        self._assert_cache_key(
             q2._cache_key,
-            q1._cache_key +
-            (l2.func_code.co_filename, l2.func_code.co_firstlineno)
+            [l1, l2]
         )
 
     def test_chained_add_operator(self):
@@ -109,14 +112,13 @@ class StateChangeTest(BakedTest):
         q2 = q1 + l2
         is_not_(q2, q1)
 
-        eq_(
+        self._assert_cache_key(
             q1._cache_key,
-            (l1.func_code.co_filename, l1.func_code.co_firstlineno)
+            [l1]
         )
-        eq_(
+        self._assert_cache_key(
             q2._cache_key,
-            q1._cache_key +
-            (l2.func_code.co_filename, l2.func_code.co_firstlineno)
+            [l1, l2]
         )
 
 
@@ -371,6 +373,29 @@ class ResultTest(BakedTest):
                         eq_(result, [(7, 'jack')])
 
                 sess.close()
+
+    def test_conditional_step_oneline(self):
+        User = self.classes.User
+
+        base_bq = BakedQuery(
+            lambda s: s.query(User.id, User.name))
+
+        base_bq += lambda q: q.order_by(User.id)
+
+        for i in range(4):
+            for cond1 in (False, True):
+                bq = base_bq._clone()
+
+                # we were using (filename, firstlineno) as cache key,
+                # which fails for this kind of thing!
+                bq += (lambda q: q.filter(User.name != 'jack')) if cond1 else (lambda q: q.filter(User.name == 'jack'))  # noqa
+                sess = Session()
+                result = bq(sess).all()
+
+                if cond1:
+                    eq_(result, [(8, u'ed'), (9, u'fred'), (10, u'chuck')])
+                else:
+                    eq_(result, [(7, 'jack')])
 
     def test_subquery_eagerloading(self):
         User = self.classes.User

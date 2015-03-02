@@ -40,9 +40,7 @@ class BakedQuery(object):
         return b1
 
     def _update_cache_key(self, fn, args=()):
-        self._cache_key += (
-            fn.func_code.co_filename,
-            fn.func_code.co_firstlineno) + args
+        self._cache_key += (fn.__code__,) + args
 
     def __iadd__(self, other):
         if isinstance(other, tuple):
@@ -121,7 +119,7 @@ class BakedQuery(object):
 
         """
         context.attributes['baked_queries'] = baked_queries = []
-        for k, v in context.attributes.items():
+        for k, v in list(context.attributes.items()):
             if isinstance(v, Query):
                 if 'subquery' in k:
                     bk = BakedQuery(lambda *args: v)
