@@ -1,5 +1,5 @@
 # sql/selectable.py
-# Copyright (C) 2005-2014 the SQLAlchemy authors and contributors
+# Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
@@ -43,9 +43,10 @@ def _interpret_as_from(element):
                 {"expr": util.ellipses_string(element)})
 
             return TextClause(util.text_type(element))
-    elif hasattr(insp, "selectable"):
+    try:
         return insp.selectable
-    raise exc.ArgumentError("FROM expression expected")
+    except AttributeError:
+        raise exc.ArgumentError("FROM expression expected")
 
 
 def _interpret_as_select(element):
@@ -2484,21 +2485,20 @@ class Select(HasPrefixes, HasSuffixes, GenerativeSelect):
         seen = set()
         translate = self._from_cloned
 
-        def add(items):
-            for item in items:
-                if item is self:
-                    raise exc.InvalidRequestError(
-                        "select() construct refers to itself as a FROM")
-                if translate and item in translate:
-                    item = translate[item]
-                if not seen.intersection(item._cloned_set):
-                    froms.append(item)
-                seen.update(item._cloned_set)
-
-        add(_from_objects(*self._raw_columns))
-        if self._whereclause is not None:
-            add(_from_objects(self._whereclause))
-        add(self._from_obj)
+        for item in itertools.chain(
+            _from_objects(*self._raw_columns),
+            _from_objects(self._whereclause)
+            if self._whereclause is not None else (),
+            self._from_obj
+        ):
+            if item is self:
+                raise exc.InvalidRequestError(
+                    "select() construct refers to itself as a FROM")
+            if translate and item in translate:
+                item = translate[item]
+            if not seen.intersection(item._cloned_set):
+                froms.append(item)
+            seen.update(item._cloned_set)
 
         return froms
 

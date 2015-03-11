@@ -1,5 +1,5 @@
 # orm/query.py
-# Copyright (C) 2005-2014 the SQLAlchemy authors and contributors
+# Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
@@ -100,7 +100,8 @@ class Query(object):
     _with_options = ()
     _with_hints = ()
     _enable_single_crit = True
-
+    _orm_only_adapt = True
+    _orm_only_from_obj_alias = True
     _current_path = _path_registry
 
     def __init__(self, entities, session=None):
@@ -231,7 +232,8 @@ class Query(object):
         adapters = []
         # do we adapt all expression elements or only those
         # tagged as 'ORM' constructs ?
-        orm_only = getattr(self, '_orm_only_adapt', orm_only)
+        if not self._orm_only_adapt:
+            orm_only = False
 
         if as_filter and self._filter_aliases:
             for fa in self._filter_aliases._visitor_iterator:
@@ -248,7 +250,7 @@ class Query(object):
             # to all SQL constructs.
             adapters.append(
                 (
-                    getattr(self, '_orm_only_from_obj_alias', orm_only),
+                    orm_only if self._orm_only_from_obj_alias else False,
                     self._from_obj_alias.replace
                 )
             )
@@ -305,7 +307,7 @@ class Query(object):
         ezero = self._mapper_zero()
         if ezero is not None:
             insp = inspect(ezero)
-            if hasattr(insp, 'mapper'):
+            if not insp.is_clause_element:
                 return insp.mapper
 
         return None
@@ -2558,18 +2560,21 @@ class Query(object):
                     'type':User,
                     'aliased':False,
                     'expr':User,
+                    'entity': User
                 },
                 {
                     'name':'id',
                     'type':Integer(),
                     'aliased':False,
                     'expr':User.id,
+                    'entity': User
                 },
                 {
                     'name':'user2',
                     'type':User,
                     'aliased':True,
-                    'expr':user_alias
+                    'expr':user_alias,
+                    'entity': user_alias
                 }
             ]
 
@@ -2579,7 +2584,10 @@ class Query(object):
                 'name': ent._label_name,
                 'type': ent.type,
                 'aliased': getattr(ent, 'is_aliased_class', False),
-                'expr': ent.expr
+                'expr': ent.expr,
+                'entity':
+                    ent.entity_zero.entity if ent.entity_zero is not None
+                    else None
             }
             for ent in self._entities
         ]
@@ -2934,6 +2942,12 @@ class Query(object):
         return update_op.rowcount
 
     def _compile_context(self, labels=True):
+        if self.dispatch.before_compile:
+            for fn in self.dispatch.before_compile:
+                new_query = fn(self)
+                if new_query is not None:
+                    self = new_query
+
         context = QueryContext(self)
 
         if context.statement is not None:
@@ -2954,10 +2968,8 @@ class Query(object):
             # "load from explicit FROMs" mode,
             # i.e. when select_from() or join() is used
             context.froms = list(context.from_clause)
-        else:
-            # "load from discrete FROMs" mode,
-            # i.e. when each _MappedEntity has its own FROM
-            context.froms = context.froms
+        # else "load from discrete FROMs" mode,
+        # i.e. when each _MappedEntity has its own FROM
 
         if self._enable_single_crit:
             self._adjust_for_single_inheritance(context)
@@ -2977,6 +2989,7 @@ class Query(object):
             context.statement = self._compound_eager_statement(context)
         else:
             context.statement = self._simple_statement(context)
+
         return context
 
     def _compound_eager_statement(self, context):
@@ -3344,6 +3357,12 @@ class Bundle(InspectionAttr):
     """If True, queries for a single Bundle will be returned as a single
     entity, rather than an element within a keyed tuple."""
 
+    is_clause_element = False
+
+    is_mapper = False
+
+    is_aliased_class = False
+
     def __init__(self, name, *exprs, **kw):
         """Construct a new :class:`.Bundle`.
 
@@ -3591,18 +3610,18 @@ class _ColumnEntity(_QueryEntity):
                 if 'parententity' in elem._annotations
             ]
 
-            self.entities = util.unique_list(
+            self.entities = util.unique_list([
                 elem._annotations['parententity']
                 for elem in all_elements
                 if 'parententity' in elem._annotations
-            )
+            ])
 
-            self._from_entities = set(
+            self._from_entities = set([
                 elem._annotations['parententity']
                 for elem in all_elements
                 if 'parententity' in elem._annotations
                 and actual_froms.intersection(elem._from_objects)
-            )
+            ])
 
             if self.entities:
                 self.entity_zero = self.entities[0]
@@ -3647,12 +3666,11 @@ class _ColumnEntity(_QueryEntity):
             return not _is_aliased_class(self.entity_zero) and \
                 entity.common_parent(self.entity_zero)
 
-    def _resolve_expr_against_query_aliases(self, query, expr, context):
-        return query._adapt_clause(expr, False, True)
-
     def row_processor(self, query, context, result):
-        column = self._resolve_expr_against_query_aliases(
-            query, self.column, context)
+        if ('fetch_column', self) in context.attributes:
+            column = context.attributes[('fetch_column', self)]
+        else:
+            column = query._adapt_clause(self.column, False, True)
 
         if context.adapter:
             column = context.adapter.columns[column]
@@ -3661,10 +3679,11 @@ class _ColumnEntity(_QueryEntity):
         return getter, self._label_name
 
     def setup_context(self, query, context):
-        column = self._resolve_expr_against_query_aliases(
-            query, self.column, context)
+        column = query._adapt_clause(self.column, False, True)
         context.froms += tuple(self.froms)
         context.primary_columns.append(column)
+
+        context.attributes[('fetch_column', self)] = column
 
     def __str__(self):
         return str(self.column)

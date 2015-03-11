@@ -24,6 +24,109 @@
     on compatibility concerns, see :doc:`/changelog/migration_10`.
 
     .. change::
+        :tags: bug, postgresql
+        :tickets: 3319
+
+        The Postgresql :class:`.postgresql.ENUM` type will emit a
+        DROP TYPE instruction when a plain ``table.drop()`` is called,
+        assuming the object is not associated directly with a
+        :class:`.MetaData` object.   In order to accomodate the use case of
+        an enumerated type shared between multiple tables, the type should
+        be associated directly with the :class:`.MetaData` object; in this
+        case the type will only be created at the metadata level, or if
+        created directly.  The rules for create/drop of
+        Postgresql enumerated types have been highly reworked in general.
+
+        .. seealso::
+
+            :ref:`change_3319`
+
+    .. change::
+        :tags: feature, orm
+        :tickets: 3317
+
+        Added a new event suite :class:`.QueryEvents`.  The
+        :meth:`.QueryEvents.before_compile` event allows the creation
+        of functions which may place additional modifications to
+        :class:`.Query` objects before the construction of the SELECT
+        statement.   It is hoped that this event be made much more
+        useful via the advent of a new inspection system that will
+        allow for detailed modifications to be made against
+        :class:`.Query` objects in an automated fashion.
+
+        .. seealso::
+
+            :class:`.QueryEvents`
+
+
+    .. change::
+        :tags: feature, orm
+        :tickets: 3249
+
+        The subquery wrapping which occurs when joined eager loading
+        is used with a one-to-many query that also features LIMIT,
+        OFFSET, or DISTINCT has been disabled in the case of a one-to-one
+        relationship, that is a one-to-many with
+        :paramref:`.relationship.uselist` set to False.  This will produce
+        more efficient queries in these cases.
+
+        .. seealso::
+
+            :ref:`change_3249`
+
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 3301
+
+        Fixed bug where the session attachment error "object is already
+        attached to session X" would fail to prevent the object from
+        also being attached to the new session, in the case that execution
+        continued after the error raise occurred.
+
+    .. change::
+        :tags: bug, ext
+        :tickets: 3219, 3240
+
+        Fixed bug where using an ``__abstract__`` mixin in the middle
+        of a declarative inheritance hierarchy would prevent attributes
+        and configuration being correctly propagated from the base class
+        to the inheriting class.
+
+    .. change::
+        :tags: feature, sql
+        :tickets: 918
+
+        The SQL compiler now generates the mapping of expected columns
+        such that they are matched to the received result set positionally,
+        rather than by name.  Originally, this was seen as a way to handle
+        cases where we had columns returned with difficult-to-predict names,
+        though in modern use that issue has been overcome by anonymous
+        labeling.   In this version, the approach basically reduces function
+        call count per-result by a few dozen calls, or more for larger
+        sets of result columns.  The approach still degrades into a modern
+        version of the old approach if any discrepancy in size exists between
+        the compiled set of columns versus what was received, so there's no
+        issue for partially or fully textual compilation scenarios where these
+        lists might not line up.
+
+    .. change::
+        :tags: feature, postgresql
+        :pullreq: github:132
+
+        The PG8000 dialect now supports the
+        :paramref:`.create_engine.encoding` parameter, by setting up
+        the client encoding on the connection which is then intercepted
+        by pg8000.  Pull request courtesy Tony Locke.
+
+    .. change::
+        :tags: feature, postgresql
+        :pullreq: github:132
+
+        Added support for PG8000's native JSONB feature.  Pull request
+        courtesy Tony Locke.
+
+    .. change::
         :tags: change, orm
 
         Mapped attributes marked as deferred without explicit undeferral

@@ -1,5 +1,5 @@
 # mssql/base.py
-# Copyright (C) 2005-2014 the SQLAlchemy authors and contributors
+# Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
@@ -1031,6 +1031,7 @@ class MSSQLCompiler(compiler.SQLCompiler):
             _order_by_clauses = select._order_by_clause.clauses
             limit_clause = select._limit_clause
             offset_clause = select._offset_clause
+            kwargs['select_wraps_for'] = select
             select = select._generate()
             select._mssql_visit = True
             select = select.column(
@@ -1048,7 +1049,7 @@ class MSSQLCompiler(compiler.SQLCompiler):
             else:
                 limitselect.append_whereclause(
                     mssql_rn <= (limit_clause))
-            return self.process(limitselect, iswrapper=True, **kwargs)
+            return self.process(limitselect, **kwargs)
         else:
             return compiler.SQLCompiler.visit_select(self, select, **kwargs)
 

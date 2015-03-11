@@ -1,5 +1,5 @@
 # engine/default.py
-# Copyright (C) 2005-2014 the SQLAlchemy authors and contributors
+# Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
@@ -461,9 +461,9 @@ class DefaultExecutionContext(interfaces.ExecutionContext):
     is_crud = False
     isddl = False
     executemany = False
-    result_map = None
     compiled = None
     statement = None
+    result_column_struct = None
     _is_implicit_returning = False
     _is_explicit_returning = False
 
@@ -522,10 +522,8 @@ class DefaultExecutionContext(interfaces.ExecutionContext):
         self.execution_options = compiled.statement._execution_options.union(
             connection._execution_options)
 
-        # compiled clauseelement.  process bind params, process table defaults,
-        # track collections used by ResultProxy to target and process results
-
-        self.result_map = compiled.result_map
+        self.result_column_struct = (
+            compiled._result_columns, compiled._ordered_columns)
 
         self.unicode_statement = util.text_type(compiled)
         if not dialect.supports_unicode_statements:

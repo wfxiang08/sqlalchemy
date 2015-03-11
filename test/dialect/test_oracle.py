@@ -229,7 +229,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         t = table('sometable', column('col1'), column('col2'))
         s = select([t])
         c = s.compile(dialect=oracle.OracleDialect())
-        assert t.c.col1 in set(c.result_map['col1'][1])
+        assert t.c.col1 in set(c._create_result_map()['col1'][1])
         s = select([t]).limit(10).offset(20)
         self.assert_compile(s,
                             'SELECT col1, col2 FROM (SELECT col1, '
@@ -240,9 +240,11 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
                             checkparams={'param_1': 10, 'param_2': 20})
 
         c = s.compile(dialect=oracle.OracleDialect())
-        assert t.c.col1 in set(c.result_map['col1'][1])
-        s = select([s.c.col1, s.c.col2])
-        self.assert_compile(s,
+        eq_(len(c._result_columns), 2)
+        assert t.c.col1 in set(c._create_result_map()['col1'][1])
+
+        s2 = select([s.c.col1, s.c.col2])
+        self.assert_compile(s2,
                             'SELECT col1, col2 FROM (SELECT col1, col2 '
                             'FROM (SELECT col1, col2, ROWNUM AS ora_rn '
                             'FROM (SELECT sometable.col1 AS col1, '
@@ -251,13 +253,16 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
                             ':param_2)',
                             checkparams={'param_1': 10, 'param_2': 20})
 
-        self.assert_compile(s,
+        self.assert_compile(s2,
                             'SELECT col1, col2 FROM (SELECT col1, col2 '
                             'FROM (SELECT col1, col2, ROWNUM AS ora_rn '
                             'FROM (SELECT sometable.col1 AS col1, '
                             'sometable.col2 AS col2 FROM sometable) '
                             'WHERE ROWNUM <= :param_1 + :param_2) WHERE ora_rn > '
                             ':param_2)')
+        c = s2.compile(dialect=oracle.OracleDialect())
+        eq_(len(c._result_columns), 2)
+        assert s.c.col1 in set(c._create_result_map()['col1'][1])
 
         s = select([t]).limit(10).offset(20).order_by(t.c.col2)
         self.assert_compile(s,
@@ -269,6 +274,9 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
                             ':param_1 + :param_2) WHERE ora_rn > :param_2',
                             checkparams={'param_1': 10, 'param_2': 20}
                             )
+        c = s.compile(dialect=oracle.OracleDialect())
+        eq_(len(c._result_columns), 2)
+        assert t.c.col1 in set(c._create_result_map()['col1'][1])
 
         s = select([t], for_update=True).limit(10).order_by(t.c.col2)
         self.assert_compile(s,
@@ -339,7 +347,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         stmt = select([type_coerce(column('x'), MyType).label('foo')]).limit(1)
         dialect = oracle.dialect()
         compiled = stmt.compile(dialect=dialect)
-        assert isinstance(compiled.result_map['foo'][-1], MyType)
+        assert isinstance(compiled._create_result_map()['foo'][-1], MyType)
 
     def test_use_binds_for_limits_disabled(self):
         t = table('sometable', column('col1'), column('col2'))
@@ -651,7 +659,7 @@ class CompileTest(fixtures.TestBase, AssertsCompiledSQL):
         stmt = t1.insert().values(c1=1).returning(fn, t1.c.c3)
         compiled = stmt.compile(dialect=oracle.dialect())
         eq_(
-            compiled.result_map,
+            compiled._create_result_map(),
             {'ret_1': ('ret_1', (t1.c.c3, 'c3', 'c3'), t1.c.c3.type),
             'ret_0': ('ret_0', (fn, 'lower', None), fn.type)}
 

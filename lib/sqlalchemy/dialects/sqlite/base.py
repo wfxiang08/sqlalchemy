@@ -1,5 +1,5 @@
 # sqlite/base.py
-# Copyright (C) 2005-2014 the SQLAlchemy authors and contributors
+# Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
@@ -271,6 +271,26 @@ lookup is used instead:
 
 .. versionadded:: 0.9.3 Support for SQLite type affinity rules when reflecting
    columns.
+
+
+.. _sqlite_partial_index:
+
+Partial Indexes
+---------------
+
+A partial index, e.g. one which uses a WHERE clause, can be specified
+with the DDL system using the argument ``sqlite_where``::
+
+    tbl = Table('testtbl', m, Column('data', Integer))
+    idx = Index('test_idx1', tbl.c.data,
+                sqlite_where=and_(tbl.c.data > 5, tbl.c.data < 10))
+
+The index will be rendered at create time as::
+
+    CREATE INDEX test_idx1 ON testtbl (data)
+    WHERE data > 5 AND data < 10
+
+.. versionadded:: 0.9.9
 
 """
 
@@ -714,8 +734,19 @@ class SQLiteDDLCompiler(compiler.DDLCompiler):
         return preparer.format_table(table, use_schema=False)
 
     def visit_create_index(self, create):
-        return super(SQLiteDDLCompiler, self).visit_create_index(
+        index = create.element
+
+        text = super(SQLiteDDLCompiler, self).visit_create_index(
             create, include_table_schema=False)
+
+        whereclause = index.dialect_options["sqlite"]["where"]
+        if whereclause is not None:
+            where_compiled = self.sql_compiler.process(
+                whereclause, include_table=False,
+                literal_binds=True)
+            text += " WHERE " + where_compiled
+
+        return text
 
 
 class SQLiteTypeCompiler(compiler.GenericTypeCompiler):
@@ -823,7 +854,10 @@ class SQLiteDialect(default.DefaultDialect):
     construct_arguments = [
         (sa_schema.Table, {
             "autoincrement": False
-        })
+        }),
+        (sa_schema.Index, {
+            "where": None,
+        }),
     ]
 
     _broken_fk_pragma_quotes = False

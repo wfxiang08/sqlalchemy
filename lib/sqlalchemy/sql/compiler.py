@@ -1,5 +1,5 @@
 # sql/compiler.py
-# Copyright (C) 2005-2014 the SQLAlchemy authors and contributors
+# Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
@@ -23,6 +23,7 @@ To generate user-defined SQL strings, see
 
 """
 
+import contextlib
 import re
 from . import schema, sqltypes, operators, functions, visitors, \
     elements, selectable, crud
@@ -361,7 +362,12 @@ class SQLCompiler(Compiled):
         # column/label name, ColumnElement object (if any) and
         # TypeEngine. ResultProxy uses this for type processing and
         # column targeting
-        self.result_map = {}
+        self._result_columns = []
+
+        # if False, means we can't be sure the list of entries
+        # in _result_columns is actually the rendered order.   This
+        # gets flipped when we use TextAsFrom, for example.
+        self._ordered_columns = True
 
         # true if the paramstyle is positional
         self.positional = dialect.positional
@@ -401,6 +407,26 @@ class SQLCompiler(Compiled):
         self.ctes_recursive = False
         if self.positional:
             self.cte_positional = {}
+
+    @contextlib.contextmanager
+    def _nested_result(self):
+        """special API to support the use case of 'nested result sets'"""
+        result_columns, ordered_columns = (
+            self._result_columns, self._ordered_columns)
+        self._result_columns, self._ordered_columns = [], False
+
+        try:
+            if self.stack:
+                entry = self.stack[-1]
+                entry['need_result_map_for_nested'] = True
+            else:
+                entry = None
+            yield self._result_columns, self._ordered_columns
+        finally:
+            if entry:
+                entry.pop('need_result_map_for_nested')
+            self._result_columns, self._ordered_columns = (
+                result_columns, ordered_columns)
 
     def _apply_numbered_params(self):
         poscount = itertools.count(1)
@@ -479,6 +505,11 @@ class SQLCompiler(Compiled):
         """Return the bind param dictionary embedded into this
         compiled object, for those values that are present."""
         return self.construct_params(_check=False)
+
+    @util.dependencies("sqlalchemy.engine.result")
+    def _create_result_map(self, result):
+        """utility method used for unit tests only."""
+        return result.ResultMetaData._create_result_map(self._result_columns)
 
     def default_from(self):
         """Called when a SELECT statement has no froms, and no FROM clause is
@@ -662,22 +693,22 @@ class SQLCompiler(Compiled):
                 self.post_process_text(textclause.text))
         )
 
-    def visit_text_as_from(self, taf, iswrapper=False,
-                           compound_index=0, force_result_map=False,
+    def visit_text_as_from(self, taf,
+                           compound_index=None,
                            asfrom=False,
                            parens=True, **kw):
 
         toplevel = not self.stack
         entry = self._default_stack_entry if toplevel else self.stack[-1]
 
-        populate_result_map = force_result_map or (
-            compound_index == 0 and (
-                toplevel or
-                entry['iswrapper']
-            )
-        )
+        populate_result_map = toplevel or \
+            (
+                compound_index == 0 and entry.get(
+                    'need_result_map_for_compound', False)
+            ) or entry.get('need_result_map_for_nested', False)
 
         if populate_result_map:
+            self._ordered_columns = False
             for c in taf.column_args:
                 self.process(c, within_columns_clause=True,
                              add_to_result_map=self._add_to_result_map)
@@ -790,13 +821,16 @@ class SQLCompiler(Compiled):
                               parens=True, compound_index=0, **kwargs):
         toplevel = not self.stack
         entry = self._default_stack_entry if toplevel else self.stack[-1]
+        need_result_map = toplevel or \
+            (compound_index == 0
+                and entry.get('need_result_map_for_compound', False))
 
         self.stack.append(
             {
                 'correlate_froms': entry['correlate_froms'],
-                'iswrapper': toplevel,
                 'asfrom_froms': entry['asfrom_froms'],
-                'selectable': cs
+                'selectable': cs,
+                'need_result_map_for_compound': need_result_map
             })
 
         keyword = self.compound_keywords.get(cs.keyword)
@@ -818,8 +852,7 @@ class SQLCompiler(Compiled):
                  or cs._offset_clause is not None) and \
             self.limit_clause(cs, **kwargs) or ""
 
-        if self.ctes and \
-                compound_index == 0 and toplevel:
+        if self.ctes and toplevel:
             text = self._render_cte_clause() + text
 
         self.stack.pop(-1)
@@ -1241,15 +1274,7 @@ class SQLCompiler(Compiled):
         if not self.dialect.case_sensitive:
             keyname = keyname.lower()
 
-        if keyname in self.result_map:
-            # conflicting keyname, just double up the list
-            # of objects.  this will cause an "ambiguous name"
-            # error if an attempt is made by the result set to
-            # access.
-            e_name, e_obj, e_type = self.result_map[keyname]
-            self.result_map[keyname] = e_name, e_obj + objects, e_type
-        else:
-            self.result_map[keyname] = name, objects, type_
+        self._result_columns.append((keyname, name, objects, type_))
 
     def _label_select_column(self, select, column,
                              populate_result_map,
@@ -1439,12 +1464,13 @@ class SQLCompiler(Compiled):
             (inner_col[c._key_label], c)
             for c in select.inner_columns
         )
-        for key, (name, objs, typ) in list(self.result_map.items()):
-            objs = tuple([d.get(col, col) for col in objs])
-            self.result_map[key] = (name, objs, typ)
+
+        self._result_columns = [
+            (key, name, tuple([d.get(col, col) for col in objs]), typ)
+            for key, name, objs, typ in self._result_columns
+        ]
 
     _default_stack_entry = util.immutabledict([
-        ('iswrapper', False),
         ('correlate_froms', frozenset()),
         ('asfrom_froms', frozenset())
     ])
@@ -1472,10 +1498,10 @@ class SQLCompiler(Compiled):
         return froms
 
     def visit_select(self, select, asfrom=False, parens=True,
-                     iswrapper=False, fromhints=None,
+                     fromhints=None,
                      compound_index=0,
-                     force_result_map=False,
                      nested_join_translation=False,
+                     select_wraps_for=None,
                      **kwargs):
 
         needs_nested_translation = \
@@ -1489,21 +1515,19 @@ class SQLCompiler(Compiled):
                 select)
             text = self.visit_select(
                 transformed_select, asfrom=asfrom, parens=parens,
-                iswrapper=iswrapper, fromhints=fromhints,
+                fromhints=fromhints,
                 compound_index=compound_index,
-                force_result_map=force_result_map,
                 nested_join_translation=True, **kwargs
             )
 
         toplevel = not self.stack
         entry = self._default_stack_entry if toplevel else self.stack[-1]
 
-        populate_result_map = force_result_map or (
-            compound_index == 0 and (
-                toplevel or
-                entry['iswrapper']
-            )
-        )
+        populate_result_map = toplevel or \
+            (
+                compound_index == 0 and entry.get(
+                    'need_result_map_for_compound', False)
+            ) or entry.get('need_result_map_for_nested', False)
 
         if needs_nested_translation:
             if populate_result_map:
@@ -1511,7 +1535,7 @@ class SQLCompiler(Compiled):
                     select, transformed_select)
             return text
 
-        froms = self._setup_select_stack(select, entry, asfrom, iswrapper)
+        froms = self._setup_select_stack(select, entry, asfrom)
 
         column_clause_args = kwargs.copy()
         column_clause_args.update({
@@ -1537,15 +1561,33 @@ class SQLCompiler(Compiled):
         # the actual list of columns to print in the SELECT column list.
         inner_columns = [
             c for c in [
-                self._label_select_column(select,
-                                          column,
-                                          populate_result_map, asfrom,
-                                          column_clause_args,
-                                          name=name)
+                self._label_select_column(
+                    select,
+                    column,
+                    populate_result_map, asfrom,
+                    column_clause_args,
+                    name=name)
                 for name, column in select._columns_plus_names
             ]
             if c is not None
         ]
+
+        if populate_result_map and select_wraps_for is not None:
+            # if this select is a compiler-generated wrapper,
+            # rewrite the targeted columns in the result map
+            wrapped_inner_columns = set(select_wraps_for.inner_columns)
+            translate = dict(
+                (outer, inner.pop()) for outer, inner in [
+                    (
+                        outer,
+                        outer.proxy_set.intersection(wrapped_inner_columns))
+                    for outer in select.inner_columns
+                ] if inner
+            )
+            self._result_columns = [
+                (key, name, tuple(translate.get(o, o) for o in obj), type_)
+                for key, name, obj, type_ in self._result_columns
+            ]
 
         text = self._compose_select_body(
             text, select, inner_columns, froms, byfrom, kwargs)
@@ -1559,8 +1601,7 @@ class SQLCompiler(Compiled):
             if per_dialect:
                 text += " " + self.get_statement_hint_text(per_dialect)
 
-        if self.ctes and \
-                compound_index == 0 and toplevel:
+        if self.ctes and toplevel:
             text = self._render_cte_clause() + text
 
         if select._suffixes:
@@ -1587,7 +1628,7 @@ class SQLCompiler(Compiled):
         hint_text = self.get_select_hint_text(byfrom)
         return hint_text, byfrom
 
-    def _setup_select_stack(self, select, entry, asfrom, iswrapper):
+    def _setup_select_stack(self, select, entry, asfrom):
         correlate_froms = entry['correlate_froms']
         asfrom_froms = entry['asfrom_froms']
 
@@ -1606,7 +1647,6 @@ class SQLCompiler(Compiled):
 
         new_entry = {
             'asfrom_froms': new_correlate_froms,
-            'iswrapper': iswrapper,
             'correlate_froms': all_correlate_froms,
             'selectable': select,
         }
@@ -1749,7 +1789,6 @@ class SQLCompiler(Compiled):
     def visit_insert(self, insert_stmt, **kw):
         self.stack.append(
             {'correlate_froms': set(),
-             "iswrapper": False,
              "asfrom_froms": set(),
              "selectable": insert_stmt})
 
@@ -1873,7 +1912,6 @@ class SQLCompiler(Compiled):
     def visit_update(self, update_stmt, **kw):
         self.stack.append(
             {'correlate_froms': set([update_stmt.table]),
-             "iswrapper": False,
              "asfrom_froms": set([update_stmt.table]),
              "selectable": update_stmt})
 
@@ -1959,7 +1997,6 @@ class SQLCompiler(Compiled):
 
     def visit_delete(self, delete_stmt, **kw):
         self.stack.append({'correlate_froms': set([delete_stmt.table]),
-                           "iswrapper": False,
                            "asfrom_froms": set([delete_stmt.table]),
                            "selectable": delete_stmt})
         self.isdelete = True

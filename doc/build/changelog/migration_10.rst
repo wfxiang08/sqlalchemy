@@ -1203,6 +1203,55 @@ join into a subquery as a join target on SQLite.
 
 :ticket:`3008`
 
+.. _change_3429:
+
+Subqueries no longer applied to uselist=False joined eager loads
+----------------------------------------------------------------
+
+Given a joined eager load like the following::
+
+    class A(Base):
+        __tablename__ = 'a'
+        id = Column(Integer, primary_key=True)
+        b = relationship("B", uselist=False)
+
+
+    class B(Base):
+        __tablename__ = 'b'
+        id = Column(Integer, primary_key=True)
+        a_id = Column(ForeignKey('a.id'))
+
+    s = Session()
+    print(s.query(A).options(joinedload(A.b)).limit(5))
+
+SQLAlchemy considers the relationship ``A.b`` to be a "one to many,
+loaded as a single value", which is essentially a "one to one"
+relationship.  However, joined eager loading has always treated the
+above as a situation where the main query needs to be inside a
+subquery, as would normally be needed for a collection of B objects
+where the main query has a LIMIT applied::
+
+    SELECT anon_1.a_id AS anon_1_a_id, b_1.id AS b_1_id, b_1.a_id AS b_1_a_id
+    FROM (SELECT a.id AS a_id
+    FROM a LIMIT :param_1) AS anon_1
+    LEFT OUTER JOIN b AS b_1 ON anon_1.a_id = b_1.a_id
+
+However, since the relationship of the inner query to the outer one is
+that at most only one row is shared in the case of ``uselist=False``
+(in the same way as a many-to-one), the "subquery" used with LIMIT +
+joined eager loading is now dropped in this case::
+
+    SELECT a.id AS a_id, b_1.id AS b_1_id, b_1.a_id AS b_1_a_id
+    FROM a LEFT OUTER JOIN b AS b_1 ON a.id = b_1.a_id
+    LIMIT :param_1
+
+In the case that the LEFT OUTER JOIN returns more than one row, the ORM
+has always emitted a warning here and ignored addtional results for
+``uselist=False``, so the results in that error situation should not change.
+
+:ticket:`3249`
+
+
 query.update() with ``synchronize_session='evaluate'`` raises on multi-table update
 -----------------------------------------------------------------------------------
 
@@ -1718,6 +1767,57 @@ reflection from temp tables as well, which is :ticket:`3203`.
 Dialect Improvements and Changes - Postgresql
 =============================================
 
+.. _change_3319:
+
+Overhaul of ENUM type create/drop rules
+---------------------------------------
+
+The rules for Postgresql :class:`.postgresql.ENUM` have been made more strict
+with regards to creating and dropping of the TYPE.
+
+An :class:`.postgresql.ENUM` that is created **without** being explicitly
+associated with a :class:`.MetaData` object will be created *and* dropped
+corresponding to :meth:`.Table.create` and :meth:`.Table.drop`::
+
+    table = Table('sometable', metadata,
+        Column('some_enum', ENUM('a', 'b', 'c', name='myenum'))
+    )
+
+    table.create(engine)  # will emit CREATE TYPE and CREATE TABLE
+    table.drop(engine)  # will emit DROP TABLE and DROP TYPE - new for 1.0
+
+This means that if a second table also has an enum named 'myenum', the
+above DROP operation will now fail.    In order to accomodate the use case
+of a common shared enumerated type, the behavior of a metadata-associated
+enumeration has been enhanced.
+
+An :class:`.postgresql.ENUM` that is created **with** being explicitly
+associated with a :class:`.MetaData` object will *not* be created *or* dropped
+corresponding to :meth:`.Table.create` and :meth:`.Table.drop`, with
+the exception of :meth:`.Table.create` called with the ``checkfirst=True``
+flag::
+
+    my_enum = ENUM('a', 'b', 'c', name='myenum', metadata=metadata)
+
+    table = Table('sometable', metadata,
+        Column('some_enum', my_enum)
+    )
+
+    # will fail: ENUM 'my_enum' does not exist
+    table.create(engine)
+
+    # will check for enum and emit CREATE TYPE
+    table.create(engine, checkfirst=True)
+
+    table.drop(engine)  # will emit DROP TABLE, *not* DROP TYPE
+
+    metadata.drop_all(engine) # will emit DROP TYPE
+
+    metadata.create_all(engine) # will emit CREATE TYPE
+
+
+:ticket:`3319`
+
 New Postgresql Table options
 -----------------------------
 
@@ -1851,6 +1951,20 @@ by Postgresql as of 9.4.  SQLAlchemy allows this using
     :meth:`.FunctionElement.filter`
 
     :class:`.FunctionFilter`
+
+PG8000 dialect supports client side encoding
+---------------------------------------------
+
+The :paramref:`.create_engine.encoding` parameter is now honored
+by the pg8000 dialect, using on connect handler which
+emits ``SET CLIENT_ENCODING`` matching the selected encoding.
+
+PG8000 native JSONB support
+--------------------------------------
+
+Support for PG8000 versions greater than 1.10.1 has been added, where
+JSONB is supported natively.
+
 
 Support for psycopg2cffi Dialect on Pypy
 ----------------------------------------

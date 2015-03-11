@@ -12,7 +12,53 @@
         :start-line: 5
 
 .. changelog::
+    :version: 0.9.10
+
+    .. change::
+        :tags: feature, orm
+        :tickets: 3320
+
+        Added a new entry ``"entity"`` to the dictionaries returned by
+        :attr:`.Query.column_descriptions`.  This refers to the primary ORM
+        mapped class or aliased class that is referred to by the expression.
+        Compared to the existing entry for ``"type"``, it will always be
+        a mapped entity, even if extracted from a column expression, or
+        None if the given expression is a pure core expression.
+
+.. changelog::
     :version: 0.9.9
+    :released: March 10, 2015
+
+    .. change::
+        :tags: feature, postgresql
+        :pullreq: bitbucket:45
+
+        Added support for the ``CONCURRENTLY`` keyword with Postgresql
+        indexes, established using ``postgresql_concurrently``.  Pull
+        request courtesy Iuri de Silvio.
+
+        .. seealso::
+
+            :ref:`postgresql_index_concurrently`
+
+    .. change::
+        :tags: bug, ext, py3k
+        :pullreq: github:154
+
+        Fixed bug where the association proxy list class would not interpret
+        slices correctly under Py3K.  Pull request courtesy
+        Gilles Dartiguelongue.
+
+    .. change::
+        :tags: feature, sqlite
+        :pullreq: bitbucket:42
+
+        Added support for partial indexes (e.g. with a WHERE clause) on
+        SQLite.  Pull request courtesy Kai Groner.
+
+        .. seealso::
+
+            :ref:`sqlite_partial_index`
 
     .. change::
         :tags: bug, orm
@@ -227,7 +273,7 @@
         check for 'utf8_bin' collation, as this fails on MySQL server < 5.0.
 
     .. change::
-        :tags: enhancement, orm
+        :tags: feature, orm
         :versions: 1.0.0
 
         Added new method :meth:`.Session.invalidate`, functions similarly

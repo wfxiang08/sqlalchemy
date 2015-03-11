@@ -1,5 +1,5 @@
 # mysql/base.py
-# Copyright (C) 2005-2014 the SQLAlchemy authors and contributors
+# Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
@@ -1382,6 +1382,7 @@ class ENUM(sqltypes.Enum, _EnumeratedValues):
         kw.pop('quote', None)
         kw.pop('native_enum', None)
         kw.pop('inherit_schema', None)
+        kw.pop('_create_events', None)
         _StringType.__init__(self, length=length, **kw)
         sqltypes.Enum.__init__(self, *values)
 

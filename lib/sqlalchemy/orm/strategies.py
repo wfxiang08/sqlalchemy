@@ -1,5 +1,5 @@
 # orm/strategies.py
-# Copyright (C) 2005-2014 the SQLAlchemy authors and contributors
+# Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
 #
 # This module is part of SQLAlchemy and is released under
@@ -1249,7 +1249,7 @@ class JoinedLoader(AbstractRelationshipLoader):
             anonymize_labels=True)
         assert clauses.aliased_class is not None
 
-        if self.parent_property.direction != interfaces.MANYTOONE:
+        if self.parent_property.uselist:
             context.multi_row_eager_loaders = True
 
         innerjoin = (
