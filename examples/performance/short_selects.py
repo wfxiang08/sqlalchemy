@@ -73,9 +73,10 @@ def test_orm_query_cols_only(n):
 @Profiler.profile
 def test_baked_query(n):
     """test a baked query of the full entity."""
+    bakery = baked.bakery()
     s = Session(bind=engine)
     for id_ in random.sample(ids, n):
-        q = baked.BakedQuery(lambda s: s.query(Customer))
+        q = bakery(lambda s: s.query(Customer))
         q += lambda q: q.filter(Customer.id == bindparam('id'))
         q(s).params(id=id_).one()
 
@@ -83,9 +84,10 @@ def test_baked_query(n):
 @Profiler.profile
 def test_baked_query_cols_only(n):
     """test a baked query of only the entity columns."""
+    bakery = baked.bakery()
     s = Session(bind=engine)
     for id_ in random.sample(ids, n):
-        q = baked.BakedQuery(
+        q = bakery(
             lambda s: s.query(
                 Customer.id, Customer.name, Customer.description))
         q += lambda q: q.filter(Customer.id == bindparam('id'))

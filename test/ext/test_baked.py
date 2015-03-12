@@ -16,6 +16,9 @@ class BakedTest(_fixtures.FixtureTest):
     run_inserts = 'once'
     run_deletes = None
 
+    def setup(self):
+        self.bakery = baked.bakery()
+
 
 class StateChangeTest(BakedTest):
     @classmethod
@@ -23,9 +26,6 @@ class StateChangeTest(BakedTest):
         User = cls.classes.User
 
         mapper(User, cls.tables.users)
-
-    def setup(self):
-        self._cache = {}
 
     def _assert_cache_key(self, key, elements):
         eq_(
@@ -37,7 +37,7 @@ class StateChangeTest(BakedTest):
         User = self.classes.User
         session = Session()
         l1 = lambda: session.query(User)
-        q1 = BakedQuery(l1, bakery=self._cache)
+        q1 = self.bakery(l1)
         self._assert_cache_key(
             q1._cache_key,
             [l1]
@@ -49,7 +49,7 @@ class StateChangeTest(BakedTest):
         session = Session()
         l1 = lambda: session.query(User)
         l2 = lambda q: q.filter(User.name == bindparam('name'))
-        q1 = BakedQuery(l1, bakery=self._cache)
+        q1 = self.bakery(l1)
         self._assert_cache_key(
             q1._cache_key,
             [l1]
@@ -70,7 +70,7 @@ class StateChangeTest(BakedTest):
         session = Session()
         l1 = lambda: session.query(User)
         l2 = lambda q: q.filter(User.name == bindparam('name'))
-        q1 = BakedQuery(l1, bakery=self._cache)
+        q1 = self.bakery(l1)
         self._assert_cache_key(
             q1._cache_key,
             [l1]
@@ -88,7 +88,7 @@ class StateChangeTest(BakedTest):
         session = Session()
         l1 = lambda: session.query(User)
         l2 = lambda q: q.filter(User.name == bindparam('name'))
-        q1 = BakedQuery(l1, bakery=self._cache)
+        q1 = self.bakery(l1)
 
         q2 = q1.with_criteria(l2)
         is_not_(q2, q1)
@@ -107,7 +107,7 @@ class StateChangeTest(BakedTest):
         session = Session()
         l1 = lambda: session.query(User)
         l2 = lambda q: q.filter(User.name == bindparam('name'))
-        q1 = BakedQuery(l1, bakery=self._cache)
+        q1 = self.bakery(l1)
 
         q2 = q1 + l2
         is_not_(q2, q1)
@@ -132,7 +132,7 @@ class LikeQueryTest(BakedTest):
     def test_first_no_result(self):
         User = self.classes.User
 
-        bq = BakedQuery(lambda s: s.query(User))
+        bq = self.bakery(lambda s: s.query(User))
         bq += lambda q: q.filter(User.name == 'asdf')
 
         eq_(
@@ -143,7 +143,7 @@ class LikeQueryTest(BakedTest):
     def test_first_multiple_result(self):
         User = self.classes.User
 
-        bq = BakedQuery(lambda s: s.query(User.id))
+        bq = self.bakery(lambda s: s.query(User.id))
         bq += lambda q: q.filter(User.name.like('%ed%')).order_by(User.id)
 
         eq_(
@@ -154,7 +154,7 @@ class LikeQueryTest(BakedTest):
     def test_one_no_result(self):
         User = self.classes.User
 
-        bq = BakedQuery(lambda s: s.query(User))
+        bq = self.bakery(lambda s: s.query(User))
         bq += lambda q: q.filter(User.name == 'asdf')
 
         assert_raises(
@@ -165,7 +165,7 @@ class LikeQueryTest(BakedTest):
     def test_one_multiple_result(self):
         User = self.classes.User
 
-        bq = BakedQuery(lambda s: s.query(User))
+        bq = self.bakery(lambda s: s.query(User))
         bq += lambda q: q.filter(User.name.like('%ed%'))
 
         assert_raises(
@@ -176,7 +176,7 @@ class LikeQueryTest(BakedTest):
     def test_get(self):
         User = self.classes.User
 
-        bq = BakedQuery(lambda s: s.query(User))
+        bq = self.bakery(lambda s: s.query(User))
 
         sess = Session()
 
@@ -211,7 +211,7 @@ class LikeQueryTest(BakedTest):
             }
         )
 
-        bq = BakedQuery(lambda s: s.query(AddressUser))
+        bq = self.bakery(lambda s: s.query(AddressUser))
 
         sess = Session()
 
@@ -245,7 +245,7 @@ class ResultTest(BakedTest):
     def test_no_steps(self):
         User = self.classes.User
 
-        bq = BakedQuery(
+        bq = self.bakery(
             lambda s: s.query(User.id, User.name).order_by(User.id))
 
         for i in range(3):
@@ -258,7 +258,7 @@ class ResultTest(BakedTest):
     def test_different_limits(self):
         User = self.classes.User
 
-        bq = BakedQuery(
+        bq = self.bakery(
             lambda s: s.query(User.id, User.name).order_by(User.id))
 
         bq += lambda q: q.limit(bindparam('limit')).offset(bindparam('offset'))
@@ -275,18 +275,77 @@ class ResultTest(BakedTest):
                     exp
                 )
 
-    def test_spoiled_w_params(self):
+    def test_spoiled_full_w_params(self):
         User = self.classes.User
 
-        bq = BakedQuery(
-            lambda s: s.query(User.id, User.name).order_by(User.id))
+        canary = mock.Mock()
 
-        bq += lambda q: q.filter(User.id == bindparam('id'))
+        def fn1(s):
+            canary.fn1()
+            return s.query(User.id, User.name).order_by(User.id)
 
-        sess = Session()
+        def fn2(q):
+            canary.fn2()
+            return q.filter(User.id == bindparam('id'))
+
+        def fn3(q):
+            canary.fn3()
+            return q
+
+        for x in range(3):
+            bq = self.bakery(fn1)
+
+            bq += fn2
+
+            sess = Session()
+            eq_(
+                bq.spoil(full=True).add_criteria(fn3)(sess).params(id=7).all(),
+                [(7, 'jack')]
+            )
+
         eq_(
-            bq.spoil()(sess).params(id=7).all(),
-            [(7, 'jack')]
+            canary.mock_calls,
+            [mock.call.fn1(), mock.call.fn2(), mock.call.fn3(),
+             mock.call.fn1(), mock.call.fn2(), mock.call.fn3(),
+             mock.call.fn1(), mock.call.fn2(), mock.call.fn3()]
+        )
+
+    def test_spoiled_half_w_params(self):
+        User = self.classes.User
+
+        canary = mock.Mock()
+
+        def fn1(s):
+            canary.fn1()
+            return s.query(User.id, User.name).order_by(User.id)
+
+        def fn2(q):
+            canary.fn2()
+            return q.filter(User.id == bindparam('id'))
+
+        def fn3(q):
+            canary.fn3()
+            return q
+
+        bq = self.bakery(fn1)
+
+        bq += fn2
+
+        for x in range(3):
+            bq = self.bakery(fn1)
+
+            bq += fn2
+
+            sess = Session()
+            eq_(
+                bq.spoil().add_criteria(fn3)(sess).params(id=7).all(),
+                [(7, 'jack')]
+            )
+
+        eq_(
+            canary.mock_calls,
+            [mock.call.fn1(), mock.call.fn2(),
+             mock.call.fn3(), mock.call.fn3(), mock.call.fn3()]
         )
 
     def test_w_new_entities(self):
@@ -297,7 +356,7 @@ class ResultTest(BakedTest):
         """
         User = self.classes.User
 
-        bq = BakedQuery(
+        bq = self.bakery(
             lambda s: s.query(User.id, User.name))
 
         bq += lambda q: q.from_self().with_entities(
@@ -318,7 +377,7 @@ class ResultTest(BakedTest):
         """
         User = self.classes.User
 
-        base_bq = BakedQuery(
+        base_bq = self.bakery(
             lambda s: s.query(User.id, User.name))
 
         base_bq += lambda q: q.order_by(User.id)
@@ -377,7 +436,7 @@ class ResultTest(BakedTest):
     def test_conditional_step_oneline(self):
         User = self.classes.User
 
-        base_bq = BakedQuery(
+        base_bq = self.bakery(
             lambda s: s.query(User.id, User.name))
 
         base_bq += lambda q: q.order_by(User.id)
@@ -401,7 +460,7 @@ class ResultTest(BakedTest):
         User = self.classes.User
         Address = self.classes.Address
 
-        base_bq = BakedQuery(
+        base_bq = self.bakery(
             lambda s: s.query(User))
 
         base_bq += lambda q: q.options(subqueryload(User.addresses))
@@ -606,7 +665,7 @@ class LazyLoaderTest(BakedTest):
     def _test_baked_lazy_loading(self, set_option):
         User, Address = self.classes.User, self.classes.Address
 
-        base_bq = BakedQuery(
+        base_bq = self.bakery(
             lambda s: s.query(User))
 
         if set_option:
@@ -665,7 +724,7 @@ class LazyLoaderTest(BakedTest):
     def test_baked_lazy_loading_m2o(self):
         User, Address = self._m2o_fixture()
 
-        base_bq = BakedQuery(
+        base_bq = self.bakery(
             lambda s: s.query(Address))
 
         base_bq += lambda q: q.options(baked_lazyload(Address.user))
