@@ -733,6 +733,41 @@ class Dialect(object):
 
         raise NotImplementedError()
 
+    @classmethod
+    def get_dialect_cls(cls, url):
+        """Given a URL, return the :class:`.Dialect` that will be used.
+
+        This is a hook that allows an external plugin to provide functionality
+        around an existing dialect, by allowing the plugin to be loaded
+        from the url based on an entrypoint, and then the plugin returns
+        the actual dialect to be used.
+
+        By default this just returns the cls.
+
+        .. versionadded:: 1.0.1
+
+        """
+        return cls
+
+    @classmethod
+    def engine_created(cls, engine):
+        """A convenience hook called before returning the final :class:`.Engine`.
+
+        If the dialect returned a different class from the
+        :meth:`.get_dialect_cls`
+        method, then the hook is called on both classes, first on
+        the dialect class returned by the :meth:`.get_dialect_cls` method and
+        then on the class on which the method was called.
+
+        The hook should be used by dialects and/or wrappers to apply special
+        events to the engine or its components.   In particular, it allows
+        a dialect-wrapping class to apply dialect-level events.
+
+        .. versionadded:: 1.0.1
+
+        """
+        pass
+
 
 class ExecutionContext(object):
     """A messenger object for a Dialect that corresponds to a single

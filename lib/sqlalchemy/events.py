@@ -1007,6 +1007,23 @@ class DialectEvents(event.Events):
         else:
             return target
 
+    def do_connect(self, dialect, cargs, cparams):
+        """Receive connection arguments before a connection is made.
+
+        Return a DBAPI connection to halt further events from invoking;
+        the returned connection will be used.
+
+        Alternatively, the event can manipulate the cargs and/or cparams
+        collections; cargs will always be a Python list that can be mutated
+        in-place and cparams a Python dictionary.  Return None to
+        allow control to pass to the next event handler and ultimately
+        to allow the dialect to connect normally, given the updated
+        arguments.
+
+        .. versionadded:: 1.0.1
+
+        """
+
     def do_executemany(self, cursor, statement, parameters, context):
         """Receive a cursor to have executemany() called.
 

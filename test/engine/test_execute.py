@@ -2532,3 +2532,42 @@ class DialectEventTest(fixtures.TestBase):
 
     def test_cursor_execute_wo_replace(self):
         self._test_cursor_execute(False)
+
+    def test_connect_replace_params(self):
+        e = engines.testing_engine(options={"_initialize": False})
+
+        @event.listens_for(e, "do_connect")
+        def evt(dialect, cargs, cparams):
+            cargs[:] = ['foo', 'hoho']
+            cparams.clear()
+            cparams['bar'] = 'bat'
+
+        m1 = Mock()
+        e.dialect.connect = m1.real_connect
+
+        with e.connect():
+            eq_(m1.mock_calls, [call.real_connect('foo', 'hoho', bar='bat')])
+
+    def test_connect_do_connect(self):
+        e = engines.testing_engine(options={"_initialize": False})
+
+        m1 = Mock()
+
+        @event.listens_for(e, "do_connect")
+        def evt1(dialect, cargs, cparams):
+            cargs[:] = ['foo', 'hoho']
+            cparams.clear()
+            cparams['bar'] = 'bat'
+
+        @event.listens_for(e, "do_connect")
+        def evt2(dialect, cargs, cparams):
+            return m1.our_connect(cargs, cparams)
+
+        with e.connect() as conn:
+            # called with args
+            eq_(
+                m1.mock_calls,
+                [call.our_connect(['foo', 'hoho'], {'bar': 'bat'})])
+
+            # returned our mock connection
+            is_(conn.connection.connection, m1.our_connect())

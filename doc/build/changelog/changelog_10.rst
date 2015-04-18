@@ -19,6 +19,17 @@
     :version: 1.0.1
 
     .. change::
+        :tags: feature, engine
+        :tickets: 3355
+
+        Added new event :class:`.DialectEvents.do_connect`, which allows
+        interception / replacement of when the :meth:`.Dialect.connect`
+        hook is called to create a DBAPI connection.  Also added
+        dialect plugin hooks :meth:`.Dialect.get_dialect_cls` and
+        :meth:`.Dialect.engine_created` which allow external plugins to
+        add events to existing dialects using entry points.
+
+    .. change::
         :tags: bug, orm
         :tickets: 3368
 
