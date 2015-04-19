@@ -1,7 +1,7 @@
 # coding: utf-8
 
 from sqlalchemy.testing import eq_, assert_raises, assert_raises_message, \
-    config, is_
+    config, is_, is_not_
 import re
 from sqlalchemy.testing.util import picklers
 from sqlalchemy.interfaces import ConnectionProxy
@@ -1942,6 +1942,47 @@ class HandleErrorTest(fixtures.TestBase):
     def test_alter_disconnect_to_false(self):
         self._test_alter_disconnect(True, False)
         self._test_alter_disconnect(False, False)
+
+    @testing.requires.independent_connections
+    def _test_alter_invalidate_pool_to_false(self, set_to_false):
+        orig_error = True
+
+        engine = engines.testing_engine()
+
+        @event.listens_for(engine, "handle_error")
+        def evt(ctx):
+            if set_to_false:
+                ctx.invalidate_pool_on_disconnect = False
+
+        c1, c2, c3 = engine.pool.connect(), \
+            engine.pool.connect(), engine.pool.connect()
+        crecs = [conn._connection_record for conn in (c1, c2, c3)]
+        c1.close()
+        c2.close()
+        c3.close()
+
+        with patch.object(engine.dialect, "is_disconnect",
+                          Mock(return_value=orig_error)):
+
+            with engine.connect() as c:
+                target_crec = c.connection._connection_record
+                try:
+                    c.execute("SELECT x FROM nonexistent")
+                    assert False
+                except tsa.exc.StatementError as st:
+                    eq_(st.connection_invalidated, True)
+
+        for crec in crecs:
+            if crec is target_crec or not set_to_false:
+                is_not_(crec.connection, crec.get_connection())
+            else:
+                is_(crec.connection, crec.get_connection())
+
+    def test_alter_invalidate_pool_to_false(self):
+        self._test_alter_invalidate_pool_to_false(True)
+
+    def test_alter_invalidate_pool_stays_true(self):
+        self._test_alter_invalidate_pool_to_false(False)
 
     def test_handle_error_event_connect_isolation_level(self):
         engine = engines.testing_engine()

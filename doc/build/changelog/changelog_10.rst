@@ -20,6 +20,14 @@
 
     .. change::
         :tags: feature, engine
+
+        Added new flag :attr:`.ExceptionContext.invalidate_pool_on_disconnect`.
+        Allows an error handler within :meth:`.ConnectionEvents.handle_error`
+        to maintain a "disconnect" condition, but prevent the connection
+        pool from being fully invalidated.
+
+    .. change::
+        :tags: feature, engine
         :tickets: 3355
 
         Added new event :class:`.DialectEvents.do_connect`, which allows

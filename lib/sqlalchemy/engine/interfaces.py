@@ -1120,3 +1120,21 @@ class ExceptionContext(object):
     changing this flag.
 
     """
+
+    invalidate_pool_on_disconnect = True
+    """Represent whether all connections in the pool should be invalidated
+    when a "disconnect" condition is in effect.
+
+    Setting this flag to False within the scope of the
+    :meth:`.ConnectionEvents.handle_error` event will have the effect such
+    that the full collection of connections in the pool will not be
+    invalidated during a disconnect; only the current connection that is the
+    subject of the error will actually be invalidated.
+
+    The purpose of this flag is for custom disconnect-handling schemes where
+    the invalidation of other connections in the pool is to be performed
+    based on other conditions, or even on a per-connection basis.
+
+    .. versionadded:: 1.0.1
+
+    """
