@@ -214,7 +214,8 @@ class Pool(log.Identified):
 
         log.instance_logger(self, echoflag=echo)
         self._threadconns = threading.local()
-        self._creator = self._maybe_wrap_callable(creator)
+        self._creator = creator
+        self._wrapped_creator = self._maybe_wrap_callable(creator)
         self._recycle = recycle
         self._invalidate_time = 0
         self._use_threadlocal = use_threadlocal
@@ -581,7 +582,7 @@ class _ConnectionRecord(object):
     def __connect(self):
         try:
             self.starttime = time.time()
-            connection = self.__pool._creator(self)
+            connection = self.__pool._wrapped_creator(self)
             self.__pool.logger.debug("Created new connection %r", connection)
             return connection
         except Exception as e:
@@ -1137,10 +1138,6 @@ class StaticPool(Pool):
 
     @memoized_property
     def _conn(self):
-        return self._creator()
-
-    @memoized_property
-    def connection(self):
         return _ConnectionRecord(self)
 
     def status(self):
@@ -1148,8 +1145,7 @@ class StaticPool(Pool):
 
     def dispose(self):
         if '_conn' in self.__dict__:
-            self._conn.close()
-            self._conn = None
+            self._conn.connection.close()
 
     def recreate(self):
         self.logger.info("Pool recreating")
@@ -1169,7 +1165,7 @@ class StaticPool(Pool):
         pass
 
     def _do_get(self):
-        return self.connection
+        return self._conn.connection
 
 
 class AssertionPool(Pool):
