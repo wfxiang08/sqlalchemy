@@ -2619,3 +2619,41 @@ class DialectEventTest(fixtures.TestBase):
 
             # returned our mock connection
             is_(conn.connection.connection, m1.our_connect())
+
+    def test_connect_do_connect_info_there_after_recycle(self):
+        # test that info is maintained after the do_connect()
+        # event for a soft invalidation.
+
+        e = engines.testing_engine(options={"_initialize": False})
+
+        @event.listens_for(e, "do_connect")
+        def evt1(dialect, conn_rec, cargs, cparams):
+            conn_rec.info['boom'] = "one"
+
+        conn = e.connect()
+        eq_(conn.info['boom'], "one")
+
+        conn.connection.invalidate(soft=True)
+        conn.close()
+        conn = e.connect()
+        eq_(conn.info['boom'], "one")
+
+    def test_connect_do_connect_info_there_after_invalidate(self):
+        # test that info is maintained after the do_connect()
+        # event for a hard invalidation.
+
+        e = engines.testing_engine(options={"_initialize": False})
+
+        @event.listens_for(e, "do_connect")
+        def evt1(dialect, conn_rec, cargs, cparams):
+            assert not conn_rec.info
+            conn_rec.info['boom'] = "one"
+
+        conn = e.connect()
+        eq_(conn.info['boom'], "one")
+
+        conn.connection.invalidate()
+        conn = e.connect()
+        eq_(conn.info['boom'], "one")
+
+

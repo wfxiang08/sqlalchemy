@@ -541,8 +541,8 @@ class _ConnectionRecord(object):
     def get_connection(self):
         recycle = False
         if self.connection is None:
-            self.connection = self.__connect()
             self.info.clear()
+            self.connection = self.__connect()
             if self.__pool.dispatch.connect:
                 self.__pool.dispatch.connect(self.connection, self)
         elif self.__pool._recycle > -1 and \
@@ -568,8 +568,8 @@ class _ConnectionRecord(object):
 
         if recycle:
             self.__close()
-            self.connection = self.__connect()
             self.info.clear()
+            self.connection = self.__connect()
             if self.__pool.dispatch.connect:
                 self.__pool.dispatch.connect(self.connection, self)
         return self.connection
