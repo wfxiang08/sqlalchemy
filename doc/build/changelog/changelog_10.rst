@@ -20,11 +20,22 @@
 
     .. change::
         :tags: feature, engine
+        :tickets: 3379
 
-        Added new flag :attr:`.ExceptionContext.invalidate_pool_on_disconnect`.
+        New features added to support engine/pool plugins with advanced
+        functionality.   Added a new "soft invalidate" feature to the
+        connection pool at the level of the checked out connection wrapper
+        as well as the :class:`._ConnectionRecord`.  This works similarly
+        to a modern pool invalidation in that connections aren't actively
+        closed, but are recycled only on next checkout; this is essentially
+        a per-connection version of that feature.  A new event
+        :class:`.PoolEvents.soft_invalidate` is added to complement it.
+
+        Also added new flag
+        :attr:`.ExceptionContext.invalidate_pool_on_disconnect`.
         Allows an error handler within :meth:`.ConnectionEvents.handle_error`
-        to maintain a "disconnect" condition, but prevent the connection
-        pool from being fully invalidated.
+        to maintain a "disconnect" condition, but to handle calling invalidate
+        on individual connections in a specific manner within the event.
 
     .. change::
         :tags: feature, engine

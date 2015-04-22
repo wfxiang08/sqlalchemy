@@ -87,10 +87,11 @@ class DefaultEngineStrategy(EngineStrategy):
         # look for existing pool or create
         pool = pop_kwarg('pool', None)
         if pool is None:
-            def connect():
+            def connect(connection_record):
                 if dialect._has_events:
                     for fn in dialect.dispatch.do_connect:
-                        connection = fn(dialect, cargs, cparams)
+                        connection = fn(
+                            dialect, connection_record, cargs, cparams)
                         if connection is not None:
                             return connection
                 return dialect.connect(*cargs, **cparams)

@@ -2578,16 +2578,18 @@ class DialectEventTest(fixtures.TestBase):
         e = engines.testing_engine(options={"_initialize": False})
 
         @event.listens_for(e, "do_connect")
-        def evt(dialect, cargs, cparams):
+        def evt(dialect, conn_rec, cargs, cparams):
             cargs[:] = ['foo', 'hoho']
             cparams.clear()
             cparams['bar'] = 'bat'
+            conn_rec.info['boom'] = "bap"
 
         m1 = Mock()
         e.dialect.connect = m1.real_connect
 
-        with e.connect():
+        with e.connect() as conn:
             eq_(m1.mock_calls, [call.real_connect('foo', 'hoho', bar='bat')])
+            eq_(conn.info['boom'], 'bap')
 
     def test_connect_do_connect(self):
         e = engines.testing_engine(options={"_initialize": False})
@@ -2595,13 +2597,15 @@ class DialectEventTest(fixtures.TestBase):
         m1 = Mock()
 
         @event.listens_for(e, "do_connect")
-        def evt1(dialect, cargs, cparams):
+        def evt1(dialect, conn_rec, cargs, cparams):
             cargs[:] = ['foo', 'hoho']
             cparams.clear()
             cparams['bar'] = 'bat'
+            conn_rec.info['boom'] = "one"
 
         @event.listens_for(e, "do_connect")
-        def evt2(dialect, cargs, cparams):
+        def evt2(dialect, conn_rec, cargs, cparams):
+            conn_rec.info['bap'] = "two"
             return m1.our_connect(cargs, cparams)
 
         with e.connect() as conn:
@@ -2609,6 +2613,9 @@ class DialectEventTest(fixtures.TestBase):
             eq_(
                 m1.mock_calls,
                 [call.our_connect(['foo', 'hoho'], {'bar': 'bat'})])
+
+            eq_(conn.info['boom'], "one")
+            eq_(conn.info['bap'], "two")
 
             # returned our mock connection
             is_(conn.connection.connection, m1.our_connect())

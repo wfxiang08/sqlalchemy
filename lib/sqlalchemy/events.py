@@ -371,7 +371,9 @@ class PoolEvents(event.Events):
         """Called when a DBAPI connection is to be "invalidated".
 
         This event is called any time the :meth:`._ConnectionRecord.invalidate`
-        method is invoked, either from API usage or via "auto-invalidation".
+        method is invoked, either from API usage or via "auto-invalidation",
+        without the ``soft`` flag.
+
         The event occurs before a final attempt to call ``.close()`` on the
         connection occurs.
 
@@ -389,6 +391,21 @@ class PoolEvents(event.Events):
         .. seealso::
 
             :ref:`pool_connection_invalidation`
+
+        """
+
+    def soft_invalidate(self, dbapi_connection, connection_record, exception):
+        """Called when a DBAPI connection is to be "soft invalidated".
+
+        This event is called any time the :meth:`._ConnectionRecord.invalidate`
+        method is invoked with the ``soft`` flag.
+
+        Soft invalidation refers to when the connection record that tracks
+        this connection will force a reconnect after the current connection
+        is checked in.   It does not actively close the dbapi_connection
+        at the point at which it is called.
+
+        .. versionadded:: 1.0.1
 
         """
 
@@ -1007,7 +1024,7 @@ class DialectEvents(event.Events):
         else:
             return target
 
-    def do_connect(self, dialect, cargs, cparams):
+    def do_connect(self, dialect, conn_rec, cargs, cparams):
         """Receive connection arguments before a connection is made.
 
         Return a DBAPI connection to halt further events from invoking;
