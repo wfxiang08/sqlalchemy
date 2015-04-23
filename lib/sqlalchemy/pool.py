@@ -186,6 +186,10 @@ class Pool(log.Identified):
             database that supports transactions,
             as it will lead to deadlocks and stale
             state.
+          * ``"none"`` - same as ``None``
+
+            .. versionadded:: 0.9.10
+
           * ``False`` - same as None, this is here for
             backwards compatibility.
 
@@ -221,7 +225,7 @@ class Pool(log.Identified):
         self._use_threadlocal = use_threadlocal
         if reset_on_return in ('rollback', True, reset_rollback):
             self._reset_on_return = reset_rollback
-        elif reset_on_return in (None, False, reset_none):
+        elif reset_on_return in ('none', None, False, reset_none):
             self._reset_on_return = reset_none
         elif reset_on_return in ('commit', reset_commit):
             self._reset_on_return = reset_commit
@@ -860,6 +864,19 @@ class SingletonThreadPool(Pool):
 
     Maintains one connection per each thread, never moving a connection to a
     thread other than the one which it was created in.
+
+    .. warning::  the :class:`.SingletonThreadPool` will call ``.close()``
+       on arbitrary connections that exist beyond the size setting of
+       ``pool_size``, e.g. if more unique **thread identities**
+       than what ``pool_size`` states are used.   This cleanup is
+       non-deterministic and not sensitive to whether or not the connections
+       linked to those thread identities are currently in use.
+
+       :class:`.SingletonThreadPool` may be improved in a future release,
+       however in its current status it is generally used only for test
+       scenarios using a SQLite ``:memory:`` database and is not recommended
+       for production use.
+
 
     Options are the same as those of :class:`.Pool`, as well as:
 

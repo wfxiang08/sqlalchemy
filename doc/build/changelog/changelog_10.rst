@@ -17,6 +17,124 @@
 
 .. changelog::
     :version: 1.0.1
+    :released: April 23, 2015
+
+    .. change::
+        :tags: bug, firebird
+        :tickets: 3380
+        :pullreq: github:168
+
+        Fixed a regression due to :ticket:`3034` where limit/offset
+        clauses were not properly interpreted by the Firebird dialect.
+        Pull request courtesy effem-git.
+
+    .. change::
+        :tags: bug, firebird
+        :tickets: 3381
+
+        Fixed support for "literal_binds" mode when using limit/offset
+        with Firebird, so that the values are again rendered inline when
+        this is selected.  Related to :ticket:`3034`.
+
+    .. change::
+        :tags: bug, sqlite
+        :tickets: 3378
+
+        Fixed a regression due to :ticket:`3282`, where due to the fact that
+        we attempt to assume the availability of ALTER when creating/dropping
+        schemas, in the case of SQLite we simply said to not worry about
+        foreign keys at all, since ALTER is not available, when creating
+        and dropping tables.  This meant that the sorting of tables was
+        basically skipped in the case of SQLite, and for the vast majority
+        of SQLite use cases, this is not an issue.
+
+        However, users who were doing DROPs on SQLite
+        with tables that contained data and with referential integrity
+        turned on would then experience errors, as the
+        dependency sorting *does* matter in the case of DROP with
+        enforced constraints, when those tables have data (SQLite will still
+        happily let you create foreign keys to nonexistent tables and drop
+        tables referring to existing ones with constraints enabled, as long as
+        there's no data being referenced).
+
+        In order to maintain the new feature of :ticket:`3282` while still
+        allowing a SQLite DROP operation to maintain ordering, we now
+        do the sort with full FKs taken under consideration, and if we encounter
+        an unresolvable cycle, only *then* do we forego attempting to sort
+        the tables; we instead emit a warning and go with the unsorted list.
+        If an environment needs both ordered DROPs *and* has foreign key
+        cycles, then the warning notes they will need to restore the
+        ``use_alter`` flag to their :class:`.ForeignKey` and
+        :class:`.ForeignKeyConstraint` objects so that just those objects will
+        be omitted from the dependency sort.
+
+        .. seealso::
+
+            :ref:`feature_3282` - contains an updated note about SQLite.
+
+    .. change::
+        :tags: bug, sql
+        :tickets: 3372
+
+        Fixed issue where a straight SELECT EXISTS query would fail to
+        assign the proper result type of Boolean to the result mapping, and
+        instead would leak column types from within the query into the
+        result map.  This issue exists in 0.9 and earlier as well, however
+        has less of an impact in those versions.  In 1.0, due to :ticket:`918`
+        this becomes a regression in that we now rely upon the result mapping
+        to be very accurate, else we can assign result-type processors to
+        the wrong column.   In all versions, this issue also has the effect
+        that a simple EXISTS will not apply the Boolean type handler, leading
+        to simple 1/0 values for backends without native boolean instead of
+        True/False.   The fix includes that an EXISTS columns argument
+        will be anon-labeled like other column expressions; a similar fix is
+        implemented for pure-boolean expressions like ``not_(True())``.
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 3374
+
+        Fixed issue where a query of the form
+        ``query(B).filter(B.a != A(id=7))`` would render the ``NEVER_SET``
+        symbol, when
+        given a transient object. For a persistent object, it would
+        always use the persisted database value and not the currently
+        set value.  Assuming autoflush is turned on, this usually would
+        not be apparent for persistent values, as any pending changes
+        would be flushed first in any case.  However, this is inconsistent
+        vs. the logic used for the  non-negated comparison,
+        ``query(B).filter(B.a == A(id=7))``, which does use the
+        current value and additionally allows comparisons to transient
+        objects.  The comparison now uses the current value and not
+        the database-persisted value.
+
+        Unlike the other ``NEVER_SET`` issues that are repaired as regressions
+        caused by :ticket:`3061` in this release, this particular issue is
+        present at least as far back as 0.8 and possibly earlier, however it
+        was discovered as a result of repairing the related ``NEVER_SET``
+        issues.
+
+        .. seealso::
+
+            :ref:`bug_3374`
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 3371
+
+        Fixed a regression cause by :ticket:`3061` where the NEVER_SET
+        symbol could leak into relationship-oriented queries, including
+        ``filter()`` and ``with_parent()`` queries.  The ``None`` symbol
+        is returned in all cases, however many of these queries have never
+        been correctly supported in any case, and produce comparisons
+        to NULL without using the IS operator.  For this reason, a warning
+        is also added to that subset of relationship queries that don't
+        currently provide for ``IS NULL``.
+
+        .. seealso::
+
+            :ref:`bug_3371`
+
 
     .. change::
         :tags: feature, engine
@@ -52,8 +170,8 @@
         :tags: bug, orm
         :tickets: 3368
 
-        Fixed a critical regression caused by :ticket:`3061` where the
-        NEVER_SET symbol could easily leak into a lazyload query, subsequent
+        Fixed a regression caused by :ticket:`3061` where the
+        NEVER_SET symbol could leak into a lazyload query, subsequent
         to the flush of a pending object.  This would occur typically
         for a many-to-one relationship that does not use a simple
         "get" strategy.   The good news is that the fix improves efficiency
@@ -133,6 +251,10 @@
         sorted by name, and the topological sort itself will process
         the incoming data in an ordered fashion.  Pull request
         courtesy Sebastian Bank.
+
+        .. seealso::
+
+            :ref:`feature_3084`
 
     .. change::
         :tags: feature, orm

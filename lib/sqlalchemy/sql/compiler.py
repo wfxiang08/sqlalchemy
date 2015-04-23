@@ -1324,10 +1324,17 @@ class SQLCompiler(Compiled):
             result_expr = _CompileLabel(col_expr,
                                         elements._as_truncated(column.name),
                                         alt_names=(column.key,))
-        elif not isinstance(column,
-                            (elements.UnaryExpression, elements.TextClause)) \
-                and (not hasattr(column, 'name') or
-                     isinstance(column, functions.Function)):
+        elif (
+            not isinstance(column, elements.TextClause) and
+            (
+                not isinstance(column, elements.UnaryExpression) or
+                column.wraps_column_expression
+            ) and
+            (
+                not hasattr(column, 'name') or
+                isinstance(column, functions.Function)
+            )
+        ):
             result_expr = _CompileLabel(col_expr, column.anon_label)
         elif col_expr is not column:
             # TODO: are we sure "column" has a .name and .key here ?
@@ -1528,6 +1535,12 @@ class SQLCompiler(Compiled):
                     'need_result_map_for_compound', False)
             ) or entry.get('need_result_map_for_nested', False)
 
+        # this was first proposed as part of #3372; however, it is not
+        # reached in current tests and could possibly be an assertion
+        # instead.
+        if not populate_result_map and 'add_to_result_map' in kwargs:
+            del kwargs['add_to_result_map']
+
         if needs_nested_translation:
             if populate_result_map:
                 self._transform_result_map_for_nested_joins(
@@ -1555,7 +1568,7 @@ class SQLCompiler(Compiled):
             text += self._generate_prefixes(
                 select, select._prefixes, **kwargs)
 
-        text += self.get_select_precolumns(select)
+        text += self.get_select_precolumns(select, **kwargs)
 
         # the actual list of columns to print in the SELECT column list.
         inner_columns = [
@@ -1729,7 +1742,7 @@ class SQLCompiler(Compiled):
         else:
             return "WITH"
 
-    def get_select_precolumns(self, select):
+    def get_select_precolumns(self, select, **kw):
         """Called when building a ``SELECT`` statement, position is just
         before column list.
 

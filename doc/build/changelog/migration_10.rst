@@ -8,7 +8,7 @@ What's New in SQLAlchemy 1.0?
     undergoing maintenance releases as of May, 2014,
     and SQLAlchemy version 1.0, released in April, 2015.
 
-    Document last updated: April 17, 2015
+    Document last updated: April 22, 2015
 
 Introduction
 ============
@@ -609,8 +609,8 @@ than the integer value.
 
 .. _feature_3282:
 
-The ``use_alter`` flag on ``ForeignKeyConstraint`` is no longer needed
-----------------------------------------------------------------------
+The ``use_alter`` flag on ``ForeignKeyConstraint`` is (usually) no longer needed
+--------------------------------------------------------------------------------
 
 The :meth:`.MetaData.create_all` and :meth:`.MetaData.drop_all` methods will
 now make use of a system that automatically renders an ALTER statement
@@ -628,6 +628,16 @@ The :paramref:`.ForeignKeyConstraint.use_alter` and
 :paramref:`.ForeignKey.use_alter` flags remain in place, and continue to have
 the same effect of establishing those constraints for which ALTER is
 required during a CREATE/DROP scenario.
+
+As of version 1.0.1, special logic takes over in the case of SQLite, which
+does not support ALTER, in the case that during a DROP, the given tables have
+an unresolvable cycle; in this case a warning is emitted, and the tables
+are dropped with **no** ordering, which is usually fine on SQLite unless
+constraints are enabled. To resolve the warning and proceed with at least
+a partial ordering on a SQLite database, particuarly one where constraints
+are enabled, re-apply "use_alter" flags to those
+:class:`.ForeignKey` and :class:`.ForeignKeyConstraint` objects which should
+be explicitly omitted from the sort.
 
 .. seealso::
 
@@ -954,6 +964,117 @@ to by string name as well::
     session.query(User).update({'fullname': 'moonbeam'})
 
 :ticket:`3228`
+
+.. _bug_3371:
+
+Warnings emitted when comparing objects with None values to relationships
+-------------------------------------------------------------------------
+
+This change is new as of 1.0.1.  Some users are performing
+queries that are essentially of this form::
+
+    session.query(Address).filter(Address.user == User(id=None))
+
+This pattern is not currently supported in SQLAlchemy.  For all versions,
+it emits SQL resembling::
+
+    SELECT address.id AS address_id, address.user_id AS address_user_id,
+    address.email_address AS address_email_address
+    FROM address WHERE ? = address.user_id
+    (None,)
+
+Note above, there is a comparison ``WHERE ? = address.user_id`` where the
+bound value ``?`` is receving ``None``, or ``NULL`` in SQL.  **This will
+always return False in SQL**.  The comparison here would in theory
+generate SQL as follows::
+
+    SELECT address.id AS address_id, address.user_id AS address_user_id,
+    address.email_address AS address_email_address
+    FROM address WHERE address.user_id IS NULL
+
+But right now, **it does not**.   Applications which are relying upon the
+fact that "NULL = NULL" produces False in all cases run the risk that
+someday, SQLAlchemy might fix this issue to generate "IS NULL", and the queries
+will then produce different results.  Therefore with this kind of operation,
+you will see a warning::
+
+    SAWarning: Got None for value of column user.id; this is unsupported
+    for a relationship comparison and will not currently produce an
+    IS comparison (but may in a future release)
+
+Note that this pattern was broken in most cases for release 1.0.0 including
+all of the betas; a value like ``SYMBOL('NEVER_SET')`` would be generated.
+This issue has been fixed, but as a result of identifying this pattern,
+the warning is now there so that we can more safely repair this broken
+behavior (now captured in :ticket:`3373`) in a future release.
+
+:ticket:`3371`
+
+.. _bug_3374:
+
+A "negated contains or equals" relationship comparison will use the current value of attributes, not the database value
+-------------------------------------------------------------------------------------------------------------------------
+
+This change is new as of 1.0.1; while we would have preferred for this to be in 1.0.0,
+it only became apparent as a result of :ticket:`3371`.
+
+Given a mapping::
+
+    class A(Base):
+        __tablename__ = 'a'
+        id = Column(Integer, primary_key=True)
+
+    class B(Base):
+        __tablename__ = 'b'
+        id = Column(Integer, primary_key=True)
+        a_id = Column(ForeignKey('a.id'))
+        a = relationship("A")
+
+Given ``A``, with primary key of 7, but which we changed to be 10
+without flushing::
+
+    s = Session(autoflush=False)
+    a1 = A(id=7)
+    s.add(a1)
+    s.commit()
+
+    a1.id = 10
+
+A query against a many-to-one relationship with this object as the target
+will use the value 10 in the bound parameters::
+
+    s.query(B).filter(B.a == a1)
+
+Produces::
+
+    SELECT b.id AS b_id, b.a_id AS b_a_id
+    FROM b
+    WHERE ? = b.a_id
+    (10,)
+
+However, before this change, the negation of this criteria would **not** use
+10, it would use 7, unless the object were flushed first::
+
+    s.query(B).filter(B.a != a1)
+
+Produces (in 0.9 and all versions prior to 1.0.1)::
+
+    SELECT b.id AS b_id, b.a_id AS b_a_id
+    FROM b
+    WHERE b.a_id != ? OR b.a_id IS NULL
+    (7,)
+
+For a transient object, it would produce a broken query::
+
+    SELECT b.id, b.a_id
+    FROM b
+    WHERE b.a_id != :a_id_1 OR b.a_id IS NULL
+    {u'a_id_1': symbol('NEVER_SET')}
+
+This inconsistency has been repaired, and in all queries the current attribute
+value, in this example ``10``, will now be used.
+
+:ticket:`3374`
 
 .. _migration_3061:
 
@@ -1929,6 +2050,22 @@ is added to unconditionally return string keys for the local set of
 columns regardless of how the object was constructed or its current
 state.
 
+
+.. _feature_3084:
+
+MetaData.sorted_tables accessor is "deterministic"
+-----------------------------------------------------
+
+The sorting of tables resulting from the :attr:`.MetaData.sorted_tables`
+accessor is "deterministic"; the ordering should be the same in all cases
+regardless of Python hashing.   This is done by first sorting the tables
+by name before passing them to the topological algorithm, which maintains
+that ordering as it iterates.
+
+Note that this change does **not** yet apply to the ordering applied
+when emitting :meth:`.MetaData.create_all` or :meth:`.MetaData.drop_all`.
+
+:ticket:`3084`
 
 .. _bug_3170:
 
