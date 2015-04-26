@@ -724,6 +724,16 @@ class ConnectionEvents(event.Events):
                     "failed" in str(context.original_exception):
                     raise MySpecialException("failed operation")
 
+        .. warning::  Because the :meth:`.ConnectionEvents.handle_error`
+           event specifically provides for exceptions to be re-thrown as
+           the ultimate exception raised by the failed statement,
+           **stack traces will be misleading** if the user-defined event
+           handler itself fails and throws an unexpected exception;
+           the stack trace may not illustrate the actual code line that
+           failed!  It is advised to code carefully here and use
+           logging and/or inline debugging if unexpected exceptions are
+           occurring.
+
         Alternatively, a "chained" style of event handling can be
         used, by configuring the handler with the ``retval=True``
         modifier and returning the new exception instance from the
