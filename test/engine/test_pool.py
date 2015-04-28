@@ -4,11 +4,11 @@ from sqlalchemy import pool, select, event
 import sqlalchemy as tsa
 from sqlalchemy import testing
 from sqlalchemy.testing.util import gc_collect, lazy_gc
-from sqlalchemy.testing import eq_, assert_raises, is_not_
+from sqlalchemy.testing import eq_, assert_raises, is_not_, is_
 from sqlalchemy.testing.engines import testing_engine
 from sqlalchemy.testing import fixtures
 import random
-from sqlalchemy.testing.mock import Mock, call
+from sqlalchemy.testing.mock import Mock, call, patch
 import weakref
 
 join_timeout = 10
@@ -1161,6 +1161,44 @@ class QueuePoolTest(PoolTestBase):
                     t.join(join_timeout)
 
         eq_(len(success), 12, "successes: %s" % success)
+
+    def test_connrec_invalidated_within_checkout_no_race(self):
+        """Test that a concurrent ConnectionRecord.invalidate() which
+        occurs after the ConnectionFairy has called _ConnectionRecord.checkout()
+        but before the ConnectionFairy tests "fairy.connection is None"
+        will not result in an InvalidRequestError.
+
+        This use case assumes that a listener on the checkout() event
+        will be raising DisconnectionError so that a reconnect attempt
+        may occur.
+
+        """
+        dbapi = MockDBAPI()
+
+        def creator():
+            return dbapi.connect()
+
+        p = pool.QueuePool(creator=creator, pool_size=1, max_overflow=0)
+
+        conn = p.connect()
+        conn.close()
+
+        _existing_checkout = pool._ConnectionRecord.checkout
+
+        @classmethod
+        def _decorate_existing_checkout(cls, *arg, **kw):
+            fairy = _existing_checkout(*arg, **kw)
+            connrec = fairy._connection_record
+            connrec.invalidate()
+            return fairy
+
+        with patch(
+                "sqlalchemy.pool._ConnectionRecord.checkout",
+                _decorate_existing_checkout):
+            conn = p.connect()
+            is_(conn._connection_record.connection, None)
+        conn.close()
+
 
     @testing.requires.threading_with_mock
     @testing.requires.timing_intensive
