@@ -189,13 +189,13 @@ class MapperEventsTest(_RemoveListeners, _fixtures.FixtureTest):
             ]
         )
 
-
     def test_merge(self):
         users, User = self.tables.users, self.classes.User
 
         mapper(User, users)
 
         canary = []
+
         def load(obj, ctx):
             canary.append('load')
         event.listen(mapper, 'load', load)
@@ -211,6 +211,7 @@ class MapperEventsTest(_RemoveListeners, _fixtures.FixtureTest):
         s.commit()
         s.query(User).order_by(User.id).first()
         eq_(canary, ['load', 'load', 'load'])
+
 
     def test_inheritance(self):
         users, addresses, User = (self.tables.users,
@@ -384,6 +385,43 @@ class MapperEventsTest(_RemoveListeners, _fixtures.FixtureTest):
         eq_(canary, [User])
         mapper(Address, addresses)
         eq_(canary, [User, Address])
+
+    def test_instrument_class_precedes_class_instrumentation(self):
+        users = self.tables.users
+
+        class MyClass(object):
+            pass
+
+        canary = Mock()
+
+        def my_init(self):
+            canary.init()
+
+        # mapper level event
+        @event.listens_for(mapper, "instrument_class")
+        def instrument_class(mp, class_):
+            canary.instrument_class(class_)
+            class_.__init__ = my_init
+
+        # instrumentationmanager event
+        @event.listens_for(object, "class_instrument")
+        def class_instrument(class_):
+            canary.class_instrument(class_)
+
+        mapper(MyClass, users)
+
+        m1 = MyClass()
+        assert attributes.instance_state(m1)
+
+        eq_(
+            [
+                call.instrument_class(MyClass),
+                call.class_instrument(MyClass),
+                call.init()
+            ],
+            canary.mock_calls
+        )
+
 
 class DeclarativeEventListenTest(_RemoveListeners, fixtures.DeclarativeMappedTest):
     run_setup_classes = "each"
@@ -1886,7 +1924,6 @@ class SessionExtensionTest(_fixtures.FixtureTest):
 
 class QueryEventsTest(
         _RemoveListeners, _fixtures.FixtureTest, AssertsCompiledSQL):
-    run_inserts = None
     __dialect__ = 'default'
 
     @classmethod
@@ -1915,5 +1952,27 @@ class QueryEventsTest(
             "FROM users "
             "WHERE users.id = :id_1 AND users.id != :id_2",
             checkparams={'id_2': 10, 'id_1': 7}
+        )
+
+    def test_alters_entities(self):
+        User = self.classes.User
+
+        @event.listens_for(query.Query, "before_compile", retval=True)
+        def fn(query):
+            return query.add_columns(User.name)
+
+        s = Session()
+
+        q = s.query(User.id, ).filter_by(id=7)
+        self.assert_compile(
+            q,
+            "SELECT users.id AS users_id, users.name AS users_name "
+            "FROM users "
+            "WHERE users.id = :id_1",
+            checkparams={'id_1': 7}
+        )
+        eq_(
+            q.all(),
+            [(7, 'jack')]
         )
 

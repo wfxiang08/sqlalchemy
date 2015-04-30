@@ -2528,7 +2528,7 @@ class Query(object):
             close_with_result=True)
 
         result = conn.execute(querycontext.statement, self._params)
-        return loading.instances(self, result, querycontext)
+        return loading.instances(querycontext.query, result, querycontext)
 
     @property
     def column_descriptions(self):
@@ -2577,6 +2577,7 @@ class Query(object):
                 'expr': ent.expr,
                 'entity':
                     ent.entity_zero.entity if ent.entity_zero is not None
+                    and not inspect(ent.entity_zero).is_selectable
                     else None
             }
             for ent in self._entities
@@ -3620,7 +3621,6 @@ class _ColumnEntity(_QueryEntity):
                 if 'parententity' in elem._annotations
                 and actual_froms.intersection(elem._from_objects)
             ])
-
             if self.entities:
                 self.entity_zero = self.entities[0]
             elif self.namespace is not None:

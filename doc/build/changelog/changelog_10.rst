@@ -16,6 +16,174 @@
         :start-line: 5
 
 .. changelog::
+    :version: 1.0.3
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 3403, 3320
+
+        Fixed regression from as yet unreleased 0.9.10 where the new addition
+        of ``entity`` to the :attr:`.Query.column_descriptions` accessor
+        would fail if the target entity was produced from a core selectable
+        such as a :class:`.Table` or :class:`.CTE` object.
+
+    .. change::
+        :tags: feature, sql
+
+        Added a placeholder method :meth:`.TypeEngine.compare_against_backend`
+        which is now consumed by Alembic migrations as of 0.7.6.  User-defined
+        types can implement this method to assist in the comparison of
+        a type against one reflected from the database.
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 3402
+
+        Fixed regression within the flush process when an attribute were
+        set to a SQL expression for an UPDATE, and the SQL expression when
+        compared to the previous value of the attribute would produce a SQL
+        comparison other than ``==`` or ``!=``, the exception "Boolean value
+        of this clause is not defined" would raise.   The fix ensures that
+        the unit of work will not interpret the SQL expression in this way.
+
+    .. change::
+        :tags: bug, ext
+        :tickets: 3397
+
+        Fixed bug in association proxy where an any()/has()
+        on an relationship->scalar non-object attribute comparison would fail,
+        e.g.
+        ``filter(Parent.some_collection_to_attribute.any(Child.attr == 'foo'))``
+
+    .. change::
+        :tags: bug, sql
+        :tickets: 3396
+
+        Fixed bug where the truncation of long labels in SQL could produce
+        a label that overlapped another label that is not truncated; this
+        because the length threshhold for truncation was greater than
+        the portion of the label that remains after truncation.  These
+        two values have now been made the same; label_length - 6.
+        The effect here is that shorter column labels will be "truncated"
+        where they would not have been truncated before.
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 3392
+
+        Fixed regression due to :ticket:`2992` where textual elements placed
+        into the :meth:`.Query.order_by` clause in conjunction with joined
+        eager loading would be added to the columns clause of the inner query
+        in such a way that they were assumed to be table-bound column names,
+        in the case where the joined eager load needs to wrap the query
+        in a subquery to accommodate for a limit/offset.
+
+        Originally, the behavior here was intentional, in that a query such
+        as ``query(User).order_by('name').limit(1)``
+        would order by ``user.name`` even if the query was modified by
+        joined eager loading to be within a subquery, as ``'name'`` would
+        be interpreted as a symbol to be located within the FROM clauses,
+        in this case ``User.name``, which would then be copied into the
+        columns clause to ensure it were present for ORDER BY.  However, the
+        feature fails to anticipate the case where ``order_by("name")`` refers
+        to a specific label name present in the local columns clause already
+        and not a name bound to a selectable in the FROM clause.
+
+        Beyond that, the feature also fails for deprecated cases such as
+        ``order_by("name desc")``, which, while it emits a
+        warning that :func:`.text` should be used here (note that the issue
+        does not impact cases where :func:`.text` is used explicitly),
+        still produces a different query than previously where the "name desc"
+        expression is copied into the columns clause inappropriately.  The
+        resolution is such that the "joined eager loading" aspect of the
+        feature will skip over these so-called "label reference" expressions
+        when augmenting the inner columns clause, as though they were
+        :func:`.text` constructs already.
+
+    .. change::
+        :tags: bug, sql
+        :tickets: 3391
+
+        Fixed regression due to :ticket:`3282` where the ``tables`` collection
+        passed as a keyword argument to the :meth:`.DDLEvents.before_create`,
+        :meth:`.DDLEvents.after_create`, :meth:`.DDLEvents.before_drop`, and
+        :meth:`.DDLEvents.after_drop` events would no longer be a list
+        of tables, but instead a list of tuples which contained a second
+        entry with foreign keys to be added or dropped.  As the ``tables``
+        collection, while documented as not necessarily stable, has come
+        to be relied upon, this change is considered a regression.
+        Additionally, in some cases for "drop", this collection would
+        be an iterator that would cause the operation to fail if
+        prematurely iterated.   The collection is now a list of table
+        objects in all cases and test coverage for the format of this
+        collection is now added.
+
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 3388
+
+        Fixed a regression regarding the :meth:`.MapperEvents.instrument_class`
+        event where its invocation was moved to be after the class manager's
+        instrumentation of the class, which is the opposite of what the
+        documentation for the event explicitly states.  The rationale for the
+        switch was due to Declarative taking the step of setting up
+        the full "instrumentation manager" for a class before it was mapped
+        for the purpose of the new ``@declared_attr`` features
+        described in :ref:`feature_3150`, but the change was also made
+        against the classical use of :func:`.mapper` for consistency.
+        However, SQLSoup relies upon the instrumentation event happening
+        before any instrumentation under classical mapping.
+        The behavior is reverted in the case of classical and declarative
+        mapping, the latter implemented by using a simple memoization
+        without using class manager.
+
+    .. change::
+        :tags: bug, orm
+        :tickets: 3387
+
+        Fixed issue in new :meth:`.QueryEvents.before_compile` event where
+        changes made to the :class:`.Query` object's collection of entities
+        to load within the event would render in the SQL, but would not
+        be reflected during the loading process.
+
+.. changelog::
+    :version: 1.0.2
+    :released: April 24, 2015
+
+    .. change::
+        :tags: bug, sql
+        :tickets: 3338, 3385
+
+        Fixed a regression that was incorrectly fixed in 1.0.0b4
+        (hence becoming two regressions); reports that
+        SELECT statements would GROUP BY a label name and fail was misconstrued
+        that certain backends such as SQL Server should not be emitting
+        ORDER BY or GROUP BY on a simple label name at all; when in fact,
+        we had forgotten that 0.9 was already emitting ORDER BY on a simple
+        label name for all backends, as described in :ref:`migration_1068`,
+        even though 1.0 includes a rewrite of this logic as part of
+        :ticket:`2992`.  As far
+        as emitting GROUP BY against a simple label, even Postgresql has
+        cases where it will raise an error even though the label to group
+        on should be apparent, so it is clear that GROUP BY should never
+        be rendered in this way automatically.
+
+        In 1.0.2, SQL Server, Firebird and others will again emit ORDER BY on
+        a simple label name when passed a
+        :class:`.Label` construct that is also present in the columns clause.
+        Additionally, no backend will emit GROUP BY against the simple label
+        name only when passed a :class:`.Label` construct.
+
+    .. change::
+        :tags: bug, orm, declarative
+        :tickets: 3383
+
+        Fixed regression regarding the declarative ``__declare_first__``
+        and ``__declare_last__`` accessors where these would no longer be
+        called on the superclass of the declarative base.
+
+.. changelog::
     :version: 1.0.1
     :released: April 23, 2015
 
@@ -340,6 +508,9 @@
         GROUP BY expressions.  The flag is also turned off defensively
         for the Firebird and Sybase dialects.
 
+        .. note:: this resolution was incorrect, please see version 1.0.2
+           for a rework of this resolution.
+
     .. change::
         :tags: feature, schema
         :tickets: 3341
@@ -400,7 +571,7 @@
         courtesy Thomas Grainger.
 
     .. change::
-        :tags: change, ext, declarative
+        :tags: change, orm, declarative
         :tickets: 3331
 
         Loosened some restrictions that were added to ``@declared_attr``
@@ -452,7 +623,7 @@
     on compatibility concerns, see :doc:`/changelog/migration_10`.
 
     .. change::
-        :tags: feature, extensions
+        :tags: feature, ext
         :tickets: 3054
 
         Added a new extension suite :mod:`sqlalchemy.ext.baked`.  This
@@ -527,7 +698,7 @@
         continued after the error raise occurred.
 
     .. change::
-        :tags: bug, ext
+        :tags: bug, orm, declarative
         :tickets: 3219, 3240
 
         Fixed bug where using an ``__abstract__`` mixin in the middle
@@ -1280,7 +1451,7 @@
         all transactional status and operations.
 
     .. change::
-        :tags: bug, declarative
+        :tags: bug, orm, declarative
         :tickets: 2670
 
         A relationship set up with :class:`.declared_attr` on
@@ -1293,7 +1464,7 @@
             :ref:`feature_3150`
 
     .. change::
-        :tags: feature, declarative
+        :tags: feature, orm, declarative
         :tickets: 3150
 
         The :class:`.declared_attr` construct has newly improved
