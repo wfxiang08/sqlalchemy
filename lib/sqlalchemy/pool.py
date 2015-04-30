@@ -251,9 +251,11 @@ class Pool(log.Identified):
                 self.add_listener(l)
 
     def _maybe_wrap_callable(self, fn):
-        """Detect if creator accepts a single argument.
+        """Detect if creator accepts a single argument, or is sent
+        as a legacy style no-arg function.
 
         """
+
         try:
             argspec = util.get_callable_argspec(fn, no_self=True)
         except TypeError:
@@ -262,14 +264,17 @@ class Pool(log.Identified):
         defaulted = argspec[3] is not None and len(argspec[3]) or 0
         positionals = len(argspec[0]) - defaulted
 
-        if positionals == 0:
-            return lambda ctx: fn()
+        # look for the exact arg signature that DefaultStrategy
+        # sends us
+        if (argspec[0], argspec[3]) == (['connection_record'], (None,)):
+            return fn
+        # or just a single positional
         elif positionals == 1:
             return fn
+        # all other cases, just wrap and assume legacy "creator" callable
+        # thing
         else:
-            raise exc.ArgumentError(
-                "creator function for pool accepts zero or one "
-                "positional arguments")
+            return lambda ctx: fn()
 
     def _close_connection(self, connection):
         self.logger.debug("Closing connection %r", connection)
@@ -1155,6 +1160,10 @@ class StaticPool(Pool):
 
     @memoized_property
     def _conn(self):
+        return self._creator()
+
+    @memoized_property
+    def connection(self):
         return _ConnectionRecord(self)
 
     def status(self):
@@ -1162,7 +1171,8 @@ class StaticPool(Pool):
 
     def dispose(self):
         if '_conn' in self.__dict__:
-            self._conn.connection.close()
+            self._conn.close()
+            self._conn = None
 
     def recreate(self):
         self.logger.info("Pool recreating")
@@ -1182,7 +1192,7 @@ class StaticPool(Pool):
         pass
 
     def _do_get(self):
-        return self._conn.connection
+        return self.connection
 
 
 class AssertionPool(Pool):
