@@ -518,7 +518,7 @@ class _ConnectionRecord(object):
         :param soft: if True, the connection isn't closed; instead, this
          connection will be recycled on next checkout.
 
-         .. versionadded:: 1.0.1
+         .. versionadded:: 1.0.3
 
         .. seealso::
 
@@ -806,7 +806,7 @@ class _ConnectionFairy(object):
         :param soft: if True, the connection isn't closed; instead, this
          connection will be recycled on next checkout.
 
-         .. versionadded:: 1.0.1
+         .. versionadded:: 1.0.3
 
         .. seealso::
 

@@ -744,7 +744,7 @@ class Dialect(object):
 
         By default this just returns the cls.
 
-        .. versionadded:: 1.0.1
+        .. versionadded:: 1.0.3
 
         """
         return cls
@@ -763,7 +763,7 @@ class Dialect(object):
         events to the engine or its components.   In particular, it allows
         a dialect-wrapping class to apply dialect-level events.
 
-        .. versionadded:: 1.0.1
+        .. versionadded:: 1.0.3
 
         """
         pass
@@ -1135,6 +1135,6 @@ class ExceptionContext(object):
     the invalidation of other connections in the pool is to be performed
     based on other conditions, or even on a per-connection basis.
 
-    .. versionadded:: 1.0.1
+    .. versionadded:: 1.0.3
 
     """

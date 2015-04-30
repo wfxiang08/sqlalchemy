@@ -405,7 +405,7 @@ class PoolEvents(event.Events):
         is checked in.   It does not actively close the dbapi_connection
         at the point at which it is called.
 
-        .. versionadded:: 1.0.1
+        .. versionadded:: 1.0.3
 
         """
 
@@ -1047,7 +1047,7 @@ class DialectEvents(event.Events):
         to allow the dialect to connect normally, given the updated
         arguments.
 
-        .. versionadded:: 1.0.1
+        .. versionadded:: 1.0.3
 
         """
 
