@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # mysql/__init__.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
@@ -10,6 +11,7 @@ from . import base, mysqldb, oursql, \
     gaerdbms, cymysql
 
 # default dialect
+# 设置默认的 dialect
 base.dialect = mysqldb.dialect
 
 from .base import \

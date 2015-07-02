@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # mysql/pymysql.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
@@ -32,7 +33,7 @@ to the pymysql driver as well.
 from .mysqldb import MySQLDialect_mysqldb
 from ...util import py3k
 
-
+# pymysql
 class MySQLDialect_pymysql(MySQLDialect_mysqldb):
     driver = 'pymysql'
 

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # mysql/base.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>

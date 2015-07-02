@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # mysql/mysqldb.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
@@ -74,6 +75,7 @@ class MySQLIdentifierPreparer_mysqldb(MySQLIdentifierPreparer):
         return value.replace("%", "%%")
 
 
+# mysqldb
 class MySQLDialect_mysqldb(MySQLDialect):
     driver = 'mysqldb'
     supports_unicode_statements = True

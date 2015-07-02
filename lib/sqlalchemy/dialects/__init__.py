@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # dialects/__init__.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
@@ -30,6 +31,8 @@ def _auto_fn(name):
     else:
         dialect = name
         driver = "base"
+
+    # 将相关的module导入
     try:
         module = __import__('sqlalchemy.dialects.%s' % (dialect, )).dialects
     except ImportError:
@@ -41,5 +44,9 @@ def _auto_fn(name):
         return lambda: module.dialect
     else:
         return None
-
+# 例如:
+#     给定 mysql          ---> sqlalchemy.dialects.mysql.base
+#     给定 mysql+pymysql  ---> mysql.pymysql --> sqlalchemy.dialects.mysql.pymysql
+#     mysql.base注意: mysql.__init__.py
+#
 registry = util.PluginLoader("sqlalchemy.dialects", auto_fn=_auto_fn)

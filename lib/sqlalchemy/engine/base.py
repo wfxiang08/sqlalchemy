@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # engine/base.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
@@ -1686,6 +1687,7 @@ class Engine(Connectable, log.Identified):
                  logging_name=None, echo=None, proxy=None,
                  execution_options=None
                  ):
+        # 默认的Engine做啥了?
         self.pool = pool
         self.url = url
         self.dialect = dialect
@@ -1695,6 +1697,7 @@ class Engine(Connectable, log.Identified):
         self.echo = echo
         self.engine = self
         log.instance_logger(self, echoflag=echo)
+
         if proxy:
             interfaces.ConnectionProxy._adapt_listener(self, proxy)
         if execution_options:
@@ -2010,7 +2013,7 @@ class Engine(Connectable, log.Identified):
         :meth:`~.Engine.connect`.
 
         """
-
+        # 每次connect都返回一个 sqlalchemy.engine.base.Connection
         return self._connection_cls(self, **kwargs)
 
     def contextual_connect(self, close_with_result=False, **kwargs):

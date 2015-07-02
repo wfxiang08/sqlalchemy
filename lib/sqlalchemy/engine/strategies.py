@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # engine/strategies.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
@@ -40,15 +41,18 @@ class EngineStrategy(object):
 
         raise NotImplementedError()
 
-
+# DefaultEngineStrategy也不能直接使用: self.name没有指定
 class DefaultEngineStrategy(EngineStrategy):
     """Base class for built-in strategies."""
 
     def create(self, name_or_url, **kwargs):
-        # create url.URL object
+        # 1. create url.URL object
         u = url.make_url(name_or_url)
 
+        # 2. mysql+mysqldb ---> dialect = MySQLDialect_mysqldb
         entrypoint = u._get_entrypoint()
+
+        # 3. dialect_cls 就是entrypoint的class
         dialect_cls = entrypoint.get_dialect_cls(u)
 
         if kwargs.pop('_coerce_config', False):
@@ -66,17 +70,20 @@ class DefaultEngineStrategy(EngineStrategy):
             if k in kwargs:
                 dialect_args[k] = pop_kwarg(k)
 
+        # 4. module没有指定，就使用默认的
         dbapi = kwargs.pop('module', None)
         if dbapi is None:
             dbapi_args = {}
             for k in util.get_func_kwargs(dialect_cls.dbapi):
                 if k in kwargs:
                     dbapi_args[k] = pop_kwarg(k)
+
+            # 获取dbapi, 例如: MySQLdb
             dbapi = dialect_cls.dbapi(**dbapi_args)
 
         dialect_args['dbapi'] = dbapi
 
-        # create dialect
+        # create dialect: MySQLDialect_mysqldb
         dialect = dialect_cls(**dialect_args)
 
         # assemble connection arguments
@@ -98,6 +105,7 @@ class DefaultEngineStrategy(EngineStrategy):
 
             creator = pop_kwarg('creator', connect)
 
+            # 默认的Pool为: return getattr(cls, 'poolclass', pool.QueuePool)
             poolclass = pop_kwarg('poolclass', None)
             if poolclass is None:
                 poolclass = dialect_cls.get_pool_class(u)
@@ -123,7 +131,6 @@ class DefaultEngineStrategy(EngineStrategy):
             else:
                 pool = pool
 
-        # create engine.
         engineclass = self.engine_cls
         engine_args = {}
         for k in util.get_cls_kwargs(engineclass):
@@ -143,8 +150,11 @@ class DefaultEngineStrategy(EngineStrategy):
                                     pool.__class__.__name__,
                                     engineclass.__name__))
 
+        # 给定pool和dbapi后面的engine是啥呢?
+        # create engine.
         engine = engineclass(pool, dialect, u, **engine_args)
 
+        # 创建时即创建连接
         if _initialize:
             do_on_connect = dialect.on_connect()
             if do_on_connect:
@@ -180,7 +190,7 @@ class PlainEngineStrategy(DefaultEngineStrategy):
 
 PlainEngineStrategy()
 
-
+# ThreadLocal 暂时不看
 class ThreadLocalEngineStrategy(DefaultEngineStrategy):
     """Strategy for configuring an Engine with threadlocal behavior."""
 

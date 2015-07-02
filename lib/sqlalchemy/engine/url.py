@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # engine/url.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
@@ -124,14 +125,26 @@ class URL(object):
         returned class implements the get_dialect_cls() method.
 
         """
+        # 如何理解: drivername
+        # mysql
+        # mysql+pymysql
         if '+' not in self.drivername:
             name = self.drivername
         else:
             name = self.drivername.replace('+', '.')
+
+        # 加载:
+        #     mysql  --> mysql.mysqldb
+        #     mysql.pymysql --> mysql.pymysql
+        #
+        # 从register中获取对应的driver
         cls = registry.load(name)
         # check for legacy dialects that
         # would return a module with 'dialect' as the
         # actual class
+        # driver有两类
+        # 通用的，一个db只有一个driver
+        # 特殊的实现， dialect
         if hasattr(cls, 'dialect') and \
                 isinstance(cls.dialect, type) and \
                 issubclass(cls.dialect, Dialect):
@@ -207,6 +220,8 @@ def _parse_rfc1738_args(name):
 
     m = pattern.match(name)
     if m is not None:
+        # 如何理解: "mysql+pymysql://root:xx@localhost:3306/dbtest1"?
+        # 1. 特别处理database, 以及query
         components = m.groupdict()
         if components['database'] is not None:
             tokens = components['database'].split('?', 2)
@@ -219,15 +234,19 @@ def _parse_rfc1738_args(name):
             query = None
         components['query'] = query
 
+        # 2. username&password
         if components['username'] is not None:
             components['username'] = _rfc_1738_unquote(components['username'])
 
         if components['password'] is not None:
             components['password'] = _rfc_1738_unquote(components['password'])
 
+        # 3. ip的解析
         ipv4host = components.pop('ipv4host')
         ipv6host = components.pop('ipv6host')
         components['host'] = ipv4host or ipv6host
+
+        # name部分是否有继续的分析呢?
         name = components.pop('name')
         return URL(name, **components)
     else:

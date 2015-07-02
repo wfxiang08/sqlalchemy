@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # util/langhelpers.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
@@ -181,6 +182,7 @@ class PluginLoader(object):
         self.auto_fn = auto_fn
 
     def load(self, name):
+        # Lazy Load(需要时再加载)
         if name in self.impls:
             return self.impls[name]()
 
@@ -204,6 +206,7 @@ class PluginLoader(object):
             "Can't load plugin: %s:%s" %
             (self.group, name))
 
+    # 主动注册（load被动注册)
     def register(self, name, modulepath, objname):
         def load():
             mod = compat.import_(modulepath)

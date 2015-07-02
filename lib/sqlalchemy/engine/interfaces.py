@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # engine/interfaces.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
@@ -13,6 +14,7 @@ from .. import util, event
 from ..sql.compiler import Compiled, TypeCompiler
 
 
+# 注意python中接口的定义
 class Dialect(object):
     """Define the behavior of a specific database and DB-API combination.
 
