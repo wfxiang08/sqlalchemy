@@ -2641,6 +2641,8 @@ class sessionmaker(_SessionClassMethods):
         self.kw = kw
         # make our own subclass of the given class, so that
         # events can be associated with it specifically.
+
+        # 创建一个Class
         self.class_ = type(class_.__name__, (class_,), {})
 
     def __call__(self, **local_kw):

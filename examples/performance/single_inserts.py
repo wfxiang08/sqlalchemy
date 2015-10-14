@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 """In this series of tests, we're looking at a method that inserts a row
 within a distinct transaction, and afterwards returns to essentially a
 "closed" state.   This would be analogous to an API call that starts up

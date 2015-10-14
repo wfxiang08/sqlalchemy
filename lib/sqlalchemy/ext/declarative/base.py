@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 # ext/declarative/base.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>

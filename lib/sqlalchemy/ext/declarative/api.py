@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 # ext/declarative/api.py
 # Copyright (C) 2005-2015 the SQLAlchemy authors and contributors
 # <see AUTHORS file>
@@ -48,11 +49,16 @@ def has_inherited_table(cls):
             return True
     return False
 
-
+#
+# 所有的Base都是由 DeclarativeMeta 生成
+# 所有的Base的派生类，即Model都会由 DeclarativeMeta 创建
+#
 class DeclarativeMeta(type):
     def __init__(cls, classname, bases, dict_):
         if '_decl_class_registry' not in cls.__dict__:
             _as_declarative(cls, classname, cls.__dict__)
+
+            
         type.__init__(cls, classname, bases, dict_)
 
     def __setattr__(cls, key, value):

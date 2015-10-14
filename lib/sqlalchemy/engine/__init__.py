@@ -94,7 +94,9 @@ from ..sql import ddl
 
 default_strategy = 'plain'
 
-
+"""
+    db = create_engine(uri, pool_size=concurrency, max_overflow=10)
+"""
 def create_engine(*args, **kwargs):
     """Create a new :class:`.Engine` instance.
 
