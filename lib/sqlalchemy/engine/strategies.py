@@ -45,11 +45,14 @@ class EngineStrategy(object):
 class DefaultEngineStrategy(EngineStrategy):
     """Base class for built-in strategies."""
 
+    # SQLALCHEMY_DATABASE_URI, echo=DEBUG, pool_size=CONCURRENCY, max_overflow=2
     def create(self, name_or_url, **kwargs):
         # 1. create url.URL object
         u = url.make_url(name_or_url)
 
         # 2. mysql+mysqldb ---> dialect = MySQLDialect_mysqldb
+
+        # "mysql+pymysql"
         entrypoint = u._get_entrypoint()
 
         # 3. dialect_cls 就是entrypoint的class
@@ -190,83 +193,3 @@ class PlainEngineStrategy(DefaultEngineStrategy):
 
 PlainEngineStrategy()
 
-# ThreadLocal 暂时不看
-class ThreadLocalEngineStrategy(DefaultEngineStrategy):
-    """Strategy for configuring an Engine with threadlocal behavior."""
-
-    name = 'threadlocal'
-    engine_cls = threadlocal.TLEngine
-
-ThreadLocalEngineStrategy()
-
-
-class MockEngineStrategy(EngineStrategy):
-    """Strategy for configuring an Engine-like object with mocked execution.
-
-    Produces a single mock Connectable object which dispatches
-    statement execution to a passed-in function.
-
-    """
-
-    name = 'mock'
-
-    def create(self, name_or_url, executor, **kwargs):
-        # create url.URL object
-        u = url.make_url(name_or_url)
-
-        dialect_cls = u.get_dialect()
-
-        dialect_args = {}
-        # consume dialect arguments from kwargs
-        for k in util.get_cls_kwargs(dialect_cls):
-            if k in kwargs:
-                dialect_args[k] = kwargs.pop(k)
-
-        # create dialect
-        dialect = dialect_cls(**dialect_args)
-
-        return MockEngineStrategy.MockConnection(dialect, executor)
-
-    class MockConnection(base.Connectable):
-        def __init__(self, dialect, execute):
-            self._dialect = dialect
-            self.execute = execute
-
-        engine = property(lambda s: s)
-        dialect = property(attrgetter('_dialect'))
-        name = property(lambda s: s._dialect.name)
-
-        def contextual_connect(self, **kwargs):
-            return self
-
-        def execution_options(self, **kw):
-            return self
-
-        def compiler(self, statement, parameters, **kwargs):
-            return self._dialect.compiler(
-                statement, parameters, engine=self, **kwargs)
-
-        def create(self, entity, **kwargs):
-            kwargs['checkfirst'] = False
-            from sqlalchemy.engine import ddl
-
-            ddl.SchemaGenerator(
-                self.dialect, self, **kwargs).traverse_single(entity)
-
-        def drop(self, entity, **kwargs):
-            kwargs['checkfirst'] = False
-            from sqlalchemy.engine import ddl
-            ddl.SchemaDropper(
-                self.dialect, self, **kwargs).traverse_single(entity)
-
-        def _run_visitor(self, visitorcallable, element,
-                         connection=None,
-                         **kwargs):
-            kwargs['checkfirst'] = False
-            visitorcallable(self.dialect, self,
-                            **kwargs).traverse_single(element)
-
-        def execute(self, object, *multiparams, **params):
-            raise NotImplementedError()
-
-MockEngineStrategy()

@@ -51,7 +51,6 @@ url.py
     defines a basic module-loading strategy for the dialect specifier
     within a URL.
 """
-
 from .interfaces import (
     Connectable,
     Dialect,
@@ -96,9 +95,16 @@ default_strategy = 'plain'
 
 """
     db = create_engine(uri, pool_size=concurrency, max_overflow=10)
+    engine = create_engine(SQLALCHEMY_DATABASE_URI, echo=DEBUG, pool_size=CONCURRENCY, max_overflow=2)
 """
 def create_engine(*args, **kwargs):
-    """Create a new :class:`.Engine` instance.
+    # strategy = kwargs.pop('strategy', default_strategy)
+    # strategy = strategies.strategies[strategy]
+    # return strategy.create(*args, **kwargs)
+    from sqlalchemy.engine.strategies import PlainEngineStrategy
+    return PlainEngineStrategy(*args, **kwargs)
+
+"""Create a new :class:`.Engine` instance.
 
     The standard calling form is to send the URL as the
     first positional argument, usually a string
@@ -383,10 +389,10 @@ def create_engine(*args, **kwargs):
         dispatch all statement execution. Used only by ``strategy='mock'``.
 
     """
-
-    strategy = kwargs.pop('strategy', default_strategy)
-    strategy = strategies.strategies[strategy]
-    return strategy.create(*args, **kwargs)
+    #
+    # strategy = kwargs.pop('strategy', default_strategy)
+    # strategy = strategies.strategies[strategy]
+    # return strategy.create(*args, **kwargs)
 
 
 def engine_from_config(configuration, prefix='sqlalchemy.', **kwargs):
