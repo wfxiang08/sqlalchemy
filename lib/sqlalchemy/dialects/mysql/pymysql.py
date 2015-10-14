@@ -49,10 +49,5 @@ class MySQLDialect_pymysql(MySQLDialect_mysqldb):
     def dbapi(cls):
         return __import__('pymysql')
 
-    if py3k:
-        def _extract_error_code(self, exception):
-            if isinstance(exception.args[0], Exception):
-                exception = exception.args[0]
-            return exception.args[0]
 
 dialect = MySQLDialect_pymysql

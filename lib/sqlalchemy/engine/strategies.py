@@ -17,6 +17,7 @@ New strategies can be added via new ``EngineStrategy`` classes.
 """
 
 from operator import attrgetter
+from sqlalchemy.dialects.mysql.pymysql import MySQLDialect_pymysql
 
 from sqlalchemy.engine import base, threadlocal, url
 from sqlalchemy import util, exc, event
@@ -53,10 +54,12 @@ class DefaultEngineStrategy(EngineStrategy):
         # 2. mysql+mysqldb ---> dialect = MySQLDialect_mysqldb
 
         # "mysql+pymysql"
-        entrypoint = u._get_entrypoint()
-
+        # entrypoint = u._get_entrypoint()
         # 3. dialect_cls 就是entrypoint的class
-        dialect_cls = entrypoint.get_dialect_cls(u)
+        # dialect_cls = entrypoint.get_dialect_cls(u)
+
+        # 实例化:
+        dialect_cls = MySQLDialect_pymysql
 
         if kwargs.pop('_coerce_config', False):
             def pop_kwarg(key, default=None):
